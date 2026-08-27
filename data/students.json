@@ -1,0 +1,67 @@
+[
+  {
+    "id": "std-2026-001",
+    "studentName": "Ali Hussein Al-Moussawi",
+    "birthDate": "2004-03-15",
+    "phoneNumber": "07801234567",
+    "additionalPhoneNumber": "07709876543",
+    "collectionDate": "2026-08-26",
+    "createdAt": "2026-08-26T09:15:00.000Z",
+    "updatedAt": "2026-08-26T09:15:00.000Z",
+    "department": "Computer Science & Engineering",
+    "academicYear": "Year 2",
+    "notes": "Transferred from University of Baghdad."
+  },
+  {
+    "id": "std-2026-002",
+    "studentName": "Zainab Kareem Al-Saadi",
+    "birthDate": "2003-11-22",
+    "phoneNumber": "07705551234",
+    "additionalPhoneNumber": "",
+    "collectionDate": "2026-08-26",
+    "createdAt": "2026-08-26T10:30:00.000Z",
+    "updatedAt": "2026-08-26T10:30:00.000Z",
+    "department": "Information Technology",
+    "academicYear": "Year 3",
+    "notes": "Dean honor list student."
+  },
+  {
+    "id": "std-2026-003",
+    "studentName": "Mustafa Ahmed Al-Janabi",
+    "birthDate": "2005-06-08",
+    "phoneNumber": "07503338899",
+    "additionalPhoneNumber": "07804441122",
+    "collectionDate": "2026-08-25",
+    "createdAt": "2026-08-25T14:20:00.000Z",
+    "updatedAt": "2026-08-25T14:20:00.000Z",
+    "department": "Civil Engineering",
+    "academicYear": "Year 1",
+    "notes": "Freshman student registration."
+  },
+  {
+    "id": "std-2026-004",
+    "studentName": "Maryam Hassan Al-Basri",
+    "birthDate": "2004-09-18",
+    "phoneNumber": "07817774433",
+    "additionalPhoneNumber": "",
+    "collectionDate": "2026-08-24",
+    "createdAt": "2026-08-24T11:00:00.000Z",
+    "updatedAt": "2026-08-24T11:00:00.000Z",
+    "department": "Biomedical Sciences",
+    "academicYear": "Year 2",
+    "notes": "Laboratory safety training completed."
+  },
+  {
+    "id": "std-2026-005",
+    "studentName": "Omar Tariq Al-Nuaimi",
+    "birthDate": "2002-12-04",
+    "phoneNumber": "+9647809988776",
+    "additionalPhoneNumber": "07712233445",
+    "collectionDate": "2026-08-20",
+    "createdAt": "2026-08-20T08:45:00.000Z",
+    "updatedAt": "2026-08-20T08:45:00.000Z",
+    "department": "Business Administration",
+    "academicYear": "Year 4",
+    "notes": "Graduation project team lead."
+  }
+]
