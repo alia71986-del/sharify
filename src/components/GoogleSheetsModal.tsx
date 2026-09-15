@@ -14,6 +14,9 @@ import {
   Check,
   Radio,
   FileText,
+  MapPin,
+  Receipt,
+  Users2,
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import {
@@ -29,7 +32,8 @@ import {
   DriveSpreadsheetFile,
   ParsedSheetStudent,
 } from '../services/googleSheets';
-import { Student } from '../types';
+import { Student, Language } from '../types';
+import { translations } from '../utils/translations';
 
 interface GoogleSheetsModalProps {
   isOpen: boolean;
@@ -45,6 +49,7 @@ interface GoogleSheetsModalProps {
   autoSyncEnabled: boolean;
   onToggleAutoSync: (enabled: boolean) => void;
   onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
+  language: Language;
 }
 
 export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
@@ -61,14 +66,16 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
   autoSyncEnabled,
   onToggleAutoSync,
   onShowToast,
+  language,
 }) => {
+  const t = translations[language];
   const [activeTab, setActiveTab] = useState<'manage' | 'export' | 'import'>('manage');
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [driveFiles, setDriveFiles] = useState<DriveSpreadsheetFile[]>([]);
   const [isCreatingSheet, setIsCreatingSheet] = useState(false);
   const [newSheetTitle, setNewSheetTitle] = useState('University Students Registry 2026');
-  
+
   // Export states
   const [exportMode, setExportMode] = useState<'overwrite' | 'append'>('overwrite');
   const [isExporting, setIsExporting] = useState(false);
@@ -105,14 +112,13 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
       const res = await googleSignIn();
       if (res) {
         onAuthChange(res.user, res.accessToken);
-        onShowToast(`Connected to Google account (${res.user.email})`, 'success');
-        // Load files
+        onShowToast(language === 'ar' ? `تم الاتصال بحساب Google (${res.user.email})` : `Connected to Google account (${res.user.email})`, 'success');
         const files = await listUserSpreadsheets(res.accessToken);
         setDriveFiles(files);
       }
     } catch (err: any) {
-      console.error('Google Sign-In failed:', err);
-      onShowToast(err.message || 'Failed to sign in with Google.', 'error');
+      console.warn('Google Sign-In caught:', err);
+      onShowToast(err.message || 'Unable to complete Google Sign-In.', 'error');
     } finally {
       setIsAuthenticating(false);
     }
@@ -123,7 +129,7 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
       await logout();
       onAuthChange(null, null);
       setDriveFiles([]);
-      onShowToast('Disconnected from Google account.', 'info');
+      onShowToast(language === 'ar' ? 'تم تسجيل الخروج من Google' : 'Disconnected from Google account.', 'info');
     } catch (err: any) {
       onShowToast(err.message || 'Failed to sign out.', 'error');
     }
@@ -144,7 +150,12 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
         students
       );
       onSpreadsheetChange(result.spreadsheetId, result.spreadsheetUrl, newSheetTitle.trim() || 'University Students Registry 2026');
-      onShowToast(`Created Google Sheet: "${newSheetTitle.trim()}" with ${students.length} student records!`, 'success');
+      onShowToast(
+        language === 'ar'
+          ? `تم إنشاء جدول Google: "${newSheetTitle.trim()}" مع ${students.length} سجلات!`
+          : `Created Google Sheet: "${newSheetTitle.trim()}" with ${students.length} student records!`,
+        'success'
+      );
       loadDriveFiles();
       setActiveTab('manage');
     } catch (err: any) {
@@ -157,12 +168,12 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
 
   const handleSelectSpreadsheet = (file: DriveSpreadsheetFile) => {
     onSpreadsheetChange(file.id, file.webViewLink || `https://docs.google.com/spreadsheets/d/${file.id}/edit`, file.name);
-    onShowToast(`Selected spreadsheet "${file.name}"`, 'info');
+    onShowToast(language === 'ar' ? `تم اختيار الجدول "${file.name}"` : `Selected spreadsheet "${file.name}"`, 'info');
   };
 
   const handleExecuteExport = async () => {
     if (!activeSpreadsheetId) {
-      onShowToast('Please create or select a Google Spreadsheet first.', 'error');
+      onShowToast(language === 'ar' ? 'يرجى اختيار أو إنشاء جدول Google أولاً' : 'Please create or select a Google Spreadsheet first.', 'error');
       return;
     }
 
@@ -179,11 +190,12 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
         token,
         activeSpreadsheetId,
         students,
-        exportMode,
-        'Student Registry'
+        exportMode
       );
       onShowToast(
-        `Successfully exported ${result.rowCount} student records to "${activeSpreadsheetTitle || 'Google Sheet'}" (${exportMode === 'overwrite' ? 'Overwritten' : 'Appended'})!`,
+        language === 'ar'
+          ? `تم تصدير ${result.updatedRows} سجلاً بنجاح إلى "${activeSpreadsheetTitle || 'جدول Google'}"!`
+          : `Successfully exported ${result.updatedRows} student records to "${activeSpreadsheetTitle || 'Google Sheet'}"!`,
         'success'
       );
     } catch (err: any) {
@@ -196,7 +208,7 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
 
   const handleFetchImportPreview = async () => {
     if (!activeSpreadsheetId) {
-      onShowToast('Please create or select a Google Spreadsheet first.', 'error');
+      onShowToast(language === 'ar' ? 'يرجى اختيار جدول Google أولاً' : 'Please create or select a Google Spreadsheet first.', 'error');
       return;
     }
 
@@ -208,17 +220,14 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
 
     setIsImporting(true);
     try {
-      const parsed = await readStudentsFromSpreadsheet(token, activeSpreadsheetId, 'Student Registry');
+      const parsed = await readStudentsFromSpreadsheet(token, activeSpreadsheetId);
+      setPreviewStudents(parsed);
       if (parsed.length === 0) {
-        // Try fallback to Sheet1
-        const fallback = await readStudentsFromSpreadsheet(token, activeSpreadsheetId, 'Sheet1');
-        setPreviewStudents(fallback);
-      } else {
-        setPreviewStudents(parsed);
+        onShowToast(language === 'ar' ? 'لم يتم العثور على سجلات في هذا الجدول' : 'No student records found in sheet.', 'info');
       }
     } catch (err: any) {
       console.error('Import preview error:', err);
-      onShowToast(err.message || 'Failed to read data from Google Sheet.', 'error');
+      onShowToast(err.message || 'Failed to read sheet data.', 'error');
     } finally {
       setIsImporting(false);
     }
@@ -228,13 +237,18 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
     if (!previewStudents || previewStudents.length === 0) return;
     setIsImporting(true);
     try {
-      const importedCount = await onImportStudents(previewStudents);
-      onShowToast(`Successfully imported ${importedCount} student records from Google Sheets!`, 'success');
+      const count = await onImportStudents(previewStudents);
+      onShowToast(
+        language === 'ar'
+          ? `تم استيراد ${count} طالباً بنجاح من جدول Google!`
+          : `Successfully imported ${count} students from Google Sheet!`,
+        'success'
+      );
       setPreviewStudents(null);
       onClose();
     } catch (err: any) {
-      console.error('Import error:', err);
-      onShowToast(err.message || 'Failed to import student records.', 'error');
+      console.error('Confirm import error:', err);
+      onShowToast(err.message || 'Failed to import students.', 'error');
     } finally {
       setIsImporting(false);
     }
@@ -245,521 +259,437 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
       <div
-        className="bg-[#0f172a] w-full max-w-2xl rounded-2xl shadow-2xl border border-[#1e293b] overflow-hidden transform transition-all text-[#e2e8f0]"
+        className="bg-[#0f172a] w-full max-w-3xl rounded-2xl shadow-2xl border border-[#1e293b] overflow-hidden transform transition-all text-[#e2e8f0]"
         role="dialog"
         aria-modal="true"
       >
         {/* Header */}
-        <div className="bg-[#0a0c10] px-6 py-4 flex items-center justify-between border-b border-[#1e293b]">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center font-bold shadow-md shadow-emerald-950/40">
-              <FileSpreadsheet className="w-6 h-6" />
+        <div className="bg-[#0a0c10] px-6 py-4 border-b border-[#1e293b] flex items-center justify-between">
+          <div className="flex items-center space-x-3 rtl:space-x-reverse">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center">
+              <FileSpreadsheet className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-                Google Sheets Integration
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono border border-emerald-500/30">
-                  Cloud Sync
-                </span>
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                {language === 'ar' ? 'مزامنة Google Sheets السحابية' : 'Google Sheets Cloud Integration'}
               </h3>
               <p className="text-xs text-slate-400">
-                Sync, export, and import student records directly with Google Sheets.
+                {language === 'ar'
+                  ? 'الربط المباشر مع Google Drive وتصدير واستيراد بيانات الطلاب'
+                  : 'Sync student data, auto-export, and import records with Google Drive'}
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex border-b border-[#1e293b] bg-[#0a0c10]/70 px-6 pt-2">
+        {/* Auth Status Banner */}
+        <div className="px-6 py-3 bg-[#0a0c10]/60 border-b border-[#1e293b] flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-slate-400">{language === 'ar' ? 'حالة الحساب:' : 'Account Status:'}</span>
+            {user ? (
+              <span className="inline-flex items-center gap-1 text-emerald-400 font-semibold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                {user.email || 'Authenticated'}
+              </span>
+            ) : (
+              <span className="text-slate-500 italic">
+                {language === 'ar' ? 'غير متصل بحساب Google' : 'Not Connected'}
+              </span>
+            )}
+          </div>
+
+          <div>
+            {user ? (
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="text-slate-400 hover:text-rose-400 flex items-center gap-1 font-semibold transition-colors cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>{language === 'ar' ? 'تسجيل الخروج' : 'Disconnect'}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSignIn}
+                disabled={isAuthenticating}
+                className="px-3 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-900 font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {isAuthenticating ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                )}
+                <span>{language === 'ar' ? 'تسجيل الدخول باستخدام Google' : 'Connect Google Account'}</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Modal Navigation Tabs */}
+        <div className="flex border-b border-[#1e293b] bg-[#0a0c10] text-xs font-bold uppercase tracking-wider">
           <button
             type="button"
             onClick={() => setActiveTab('manage')}
-            className={`pb-3 px-4 text-xs font-semibold uppercase tracking-wider transition-all border-b-2 flex items-center gap-2 cursor-pointer ${
+            className={`flex-1 py-3 text-center border-b-2 transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
               activeTab === 'manage'
-                ? 'border-emerald-400 text-emerald-400'
+                ? 'border-amber-400 text-amber-400 bg-amber-500/5'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
             <FolderOpen className="w-4 h-4" />
-            Spreadsheet Setup
+            <span>{language === 'ar' ? 'إدارة الجداول' : 'Spreadsheets'}</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('export')}
-            className={`pb-3 px-4 text-xs font-semibold uppercase tracking-wider transition-all border-b-2 flex items-center gap-2 cursor-pointer ${
+            className={`flex-1 py-3 text-center border-b-2 transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
               activeTab === 'export'
-                ? 'border-emerald-400 text-emerald-400'
+                ? 'border-emerald-400 text-emerald-400 bg-emerald-500/5'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
             <Upload className="w-4 h-4" />
-            Export to Sheet ({students.length})
+            <span>{language === 'ar' ? 'تصدير السجلات' : 'Export Records'}</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('import')}
-            className={`pb-3 px-4 text-xs font-semibold uppercase tracking-wider transition-all border-b-2 flex items-center gap-2 cursor-pointer ${
+            className={`flex-1 py-3 text-center border-b-2 transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
               activeTab === 'import'
-                ? 'border-emerald-400 text-emerald-400'
+                ? 'border-sky-400 text-sky-400 bg-sky-500/5'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
             <Download className="w-4 h-4" />
-            Import from Sheet
+            <span>{language === 'ar' ? 'استيراد السجلات' : 'Import Records'}</span>
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
-          {/* Google Auth Status Section */}
-          <div className="p-4 rounded-xl border border-[#1e293b] bg-[#0a0c10]">
-            {!user ? (
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm font-bold text-white">Connect Your Google Account</p>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Sign in to access your Google Drive spreadsheets and sync student records.
-                  </p>
-                </div>
-                {/* Official Sign in with Google Button Style */}
-                <button
-                  type="button"
-                  id="google-signin-btn"
-                  onClick={handleSignIn}
-                  disabled={isAuthenticating}
-                  className="px-4 py-2.5 bg-white text-slate-900 hover:bg-slate-100 rounded-xl font-medium text-xs flex items-center gap-2.5 shadow-md transition-all cursor-pointer disabled:opacity-50"
-                >
-                  <svg className="w-4 h-4" viewBox="0 0 48 48">
-                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
-                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
-                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
-                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
-                  </svg>
-                  <span>{isAuthenticating ? 'Signing in...' : 'Sign in with Google'}</span>
-                </button>
+        <div className="p-6 max-h-[60vh] overflow-y-auto space-y-6 text-sm">
+          {!user ? (
+            <div className="p-8 text-center bg-[#0a0c10] border border-[#1e293b] rounded-2xl space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
+                <FileSpreadsheet className="w-6 h-6" />
               </div>
-            ) : (
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div className="flex items-center space-x-3">
-                  {user.photoURL ? (
-                    <img
-                      src={user.photoURL}
-                      alt={user.displayName || 'User'}
-                      referrerPolicy="no-referrer"
-                      className="w-10 h-10 rounded-full border border-emerald-500/40"
-                    />
-                  ) : (
-                    <div className="w-10 h-10 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center">
-                      {(user.displayName || user.email || 'U').charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-bold text-white">{user.displayName || 'Google User'}</p>
-                      <span className="text-[10px] px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-md font-semibold">
-                        Authenticated
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-400 font-mono">{user.email}</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleSignOut}
-                  className="px-3 py-1.5 rounded-lg border border-[#334155] text-slate-400 hover:text-rose-400 hover:border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  Disconnect
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* TAB 1: SPREADSHEET SETUP */}
-          {activeTab === 'manage' && (
-            <div className="space-y-6">
-              {/* Active Linked Spreadsheet Banner */}
-              {activeSpreadsheetId ? (
-                <div className="p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/5 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-400 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      Active Google Sheet
-                    </span>
-                    <a
-                      href={activeSpreadsheetUrl || `https://docs.google.com/spreadsheets/d/${activeSpreadsheetId}/edit`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold flex items-center gap-1 hover:underline"
-                    >
-                      Open in Google Sheets
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  </div>
-                  <div>
-                    <p className="text-sm font-bold text-white">{activeSpreadsheetTitle || 'Student Registry Spreadsheet'}</p>
-                    <p className="text-xs text-slate-400 font-mono mt-0.5 truncate">ID: {activeSpreadsheetId}</p>
-                  </div>
-
-                  {/* Auto Sync Toggle */}
-                  <div className="pt-2 border-t border-emerald-500/20 flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-semibold text-slate-200">Real-Time Intake Auto-Sync</p>
-                      <p className="text-[11px] text-slate-400">
-                        Automatically append newly submitted student forms to this Google Sheet.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => onToggleAutoSync(!autoSyncEnabled)}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
-                        autoSyncEnabled ? 'bg-emerald-500' : 'bg-slate-700'
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          autoSyncEnabled ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 text-xs text-amber-300 flex items-start gap-2.5">
-                  <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-                  <p>
-                    No active Google Spreadsheet is linked yet. Create a new one below or select an existing sheet from your Google Drive.
-                  </p>
-                </div>
-              )}
-
-              {/* Option 1: Create New Sheet */}
-              <div className="p-4 rounded-xl border border-[#1e293b] bg-[#0a0c10] space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                  <Plus className="w-3.5 h-3.5 text-amber-400" />
-                  Create New Student Registry Spreadsheet
+              <div className="max-w-md mx-auto space-y-1">
+                <h4 className="text-base font-bold text-white">
+                  {language === 'ar' ? 'يرجى تسجيل الدخول بحساب Google' : 'Google Account Connection Required'}
                 </h4>
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <input
-                    type="text"
-                    value={newSheetTitle}
-                    onChange={(e) => setNewSheetTitle(e.target.value)}
-                    placeholder="Spreadsheet Title..."
-                    className="flex-1 px-3.5 py-2 rounded-xl bg-[#0f172a] border border-[#334155] text-sm text-white focus:border-amber-500 focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleCreateNewSpreadsheet}
-                    disabled={isCreatingSheet || !user}
-                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    {isCreatingSheet ? (
-                      <>
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        Creating...
-                      </>
-                    ) : (
-                      <>
-                        <Plus className="w-4 h-4" />
-                        Create & Initialize Sheet
-                      </>
-                    )}
-                  </button>
-                </div>
-                <p className="text-[11px] text-slate-500">
-                  Creates a formatted Google Sheet in your Google Drive with header styling and populates it with all {students.length} current student records.
+                <p className="text-xs text-slate-400">
+                  {language === 'ar'
+                    ? 'قم بتسجيل الدخول للوصول المباشر إلى جداول Google Drive وإنشاء جداول جديدة وحفظ بيانات الطلاب سحابياً.'
+                    : 'Connect your Google account to create spreadsheets, auto-sync records, and export to Google Drive securely.'}
                 </p>
               </div>
-
-              {/* Option 2: Pick Existing from Drive */}
-              <div className="p-4 rounded-xl border border-[#1e293b] bg-[#0a0c10] space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                    <FolderOpen className="w-3.5 h-3.5 text-emerald-400" />
-                    Select from Your Google Drive
-                  </h4>
-                  <button
-                    type="button"
-                    onClick={loadDriveFiles}
-                    disabled={isLoadingFiles || !user}
-                    className="text-xs text-slate-400 hover:text-white flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isLoadingFiles ? 'animate-spin' : ''}`} />
-                    Refresh
-                  </button>
-                </div>
-
-                {!user ? (
-                  <p className="text-xs text-slate-500 italic">Sign in above to browse your Google Drive spreadsheets.</p>
-                ) : isLoadingFiles ? (
-                  <div className="py-4 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-                    <RefreshCw className="w-4 h-4 animate-spin text-emerald-400" />
-                    Loading spreadsheets from Drive...
-                  </div>
-                ) : driveFiles.length === 0 ? (
-                  <p className="text-xs text-slate-500 italic">No spreadsheets found in your Google Drive.</p>
+              <button
+                type="button"
+                onClick={handleSignIn}
+                disabled={isAuthenticating}
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs inline-flex items-center gap-2 shadow-lg shadow-emerald-950/40 cursor-pointer disabled:opacity-50"
+              >
+                {isAuthenticating ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
                 ) : (
-                  <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
-                    {driveFiles.map((file) => (
-                      <div
-                        key={file.id}
-                        onClick={() => handleSelectSpreadsheet(file)}
-                        className={`p-2.5 rounded-xl border flex items-center justify-between gap-3 cursor-pointer transition-colors ${
-                          activeSpreadsheetId === file.id
-                            ? 'bg-emerald-500/10 border-emerald-500/40 text-white'
-                            : 'bg-[#0f172a] border-[#1e293b] hover:border-slate-600 text-slate-300'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <FileSpreadsheet className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                          <div className="truncate">
-                            <p className="text-xs font-semibold truncate">{file.name}</p>
-                            {file.modifiedTime && (
-                              <p className="text-[10px] text-slate-500">
-                                Modified: {new Date(file.modifiedTime).toLocaleDateString()}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        {activeSpreadsheetId === file.id && (
-                          <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                  <FileSpreadsheet className="w-4 h-4" />
                 )}
-              </div>
+                <span>{language === 'ar' ? 'تسجيل الدخول بحساب Google' : 'Sign in with Google'}</span>
+              </button>
             </div>
-          )}
-
-          {/* TAB 2: EXPORT TO GOOGLE SHEETS */}
-          {activeTab === 'export' && (
-            <div className="space-y-5">
-              {!activeSpreadsheetId ? (
-                <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 text-xs text-amber-300">
-                  Please link or create a Google Spreadsheet in the <strong>Spreadsheet Setup</strong> tab first before exporting.
-                </div>
-              ) : (
-                <>
-                  <div className="p-3.5 rounded-xl border border-[#1e293b] bg-[#0a0c10] text-xs space-y-1">
-                    <p className="text-slate-400">Target Spreadsheet:</p>
-                    <p className="text-sm font-bold text-white">{activeSpreadsheetTitle}</p>
-                    <p className="text-slate-500 font-mono text-[11px] truncate">ID: {activeSpreadsheetId}</p>
-                  </div>
-
-                  {/* Mode Selection */}
-                  <div className="space-y-2">
-                    <label className="block text-xs uppercase font-bold tracking-wider text-slate-400">
-                      Export Mode
-                    </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div
-                        onClick={() => setExportMode('overwrite')}
-                        className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
-                          exportMode === 'overwrite'
-                            ? 'bg-amber-500/10 border-amber-500/40 ring-1 ring-amber-500/30'
-                            : 'bg-[#0a0c10] border-[#1e293b] hover:border-slate-700'
-                        }`}
+          ) : (
+            <>
+              {/* TAB 1: MANAGE SPREADSHEETS */}
+              {activeTab === 'manage' && (
+                <div className="space-y-6">
+                  {/* Create New Sheet */}
+                  <div className="p-4 rounded-xl bg-[#0a0c10] border border-[#1e293b] space-y-3">
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                      <Plus className="w-4 h-4 text-amber-400" />
+                      {language === 'ar' ? 'إنشاء جدول Google جديد' : 'Create New Google Spreadsheet'}
+                    </h4>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="text"
+                        value={newSheetTitle}
+                        onChange={(e) => setNewSheetTitle(e.target.value)}
+                        placeholder="Spreadsheet Title"
+                        className="flex-1 px-3.5 py-2 rounded-xl bg-[#0f172a] border border-[#1e293b] focus:border-amber-500 text-white text-xs outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleCreateNewSpreadsheet}
+                        disabled={isCreatingSheet || !newSheetTitle.trim()}
+                        className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-colors cursor-pointer disabled:opacity-50"
                       >
-                        <div className="flex items-center gap-2 font-bold text-xs text-white">
-                          <Radio className={`w-3.5 h-3.5 ${exportMode === 'overwrite' ? 'text-amber-400' : 'text-slate-500'}`} />
-                          Overwrite & Refresh Sheet
-                        </div>
-                        <p className="text-[11px] text-slate-400 mt-1">
-                          Replaces all rows in the sheet with the current {students.length} registry records.
-                        </p>
-                      </div>
-
-                      <div
-                        onClick={() => setExportMode('append')}
-                        className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
-                          exportMode === 'append'
-                            ? 'bg-emerald-500/10 border-emerald-500/40 ring-1 ring-emerald-500/30'
-                            : 'bg-[#0a0c10] border-[#1e293b] hover:border-slate-700'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 font-bold text-xs text-white">
-                          <Radio className={`w-3.5 h-3.5 ${exportMode === 'append' ? 'text-emerald-400' : 'text-slate-500'}`} />
-                          Append Rows
-                        </div>
-                        <p className="text-[11px] text-slate-400 mt-1">
-                          Adds {students.length} records to the end of the existing spreadsheet without clearing.
-                        </p>
-                      </div>
+                        {isCreatingSheet ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Plus className="w-3.5 h-3.5" />
+                        )}
+                        <span>{language === 'ar' ? 'إنشاء وربط' : 'Create & Link'}</span>
+                      </button>
                     </div>
                   </div>
 
-                  {/* Confirmation Modal Section for Destructive Overwrite */}
-                  {showExportConfirm ? (
-                    <div className="p-4 rounded-xl border border-rose-500/40 bg-rose-500/10 space-y-3">
-                      <div className="flex items-center gap-2 text-rose-400 font-bold text-xs">
-                        <AlertCircle className="w-4 h-4" />
-                        Confirm Overwrite Google Sheet Data
+                  {/* Existing Drive Spreadsheets */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                        {language === 'ar' ? 'جداول Google Drive المتوفرة' : 'Drive Spreadsheets'}
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={loadDriveFiles}
+                        disabled={isLoadingFiles}
+                        className="text-xs text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <RefreshCw className={`w-3 h-3 ${isLoadingFiles ? 'animate-spin' : ''}`} />
+                        <span>{language === 'ar' ? 'تحديث القائمة' : 'Refresh'}</span>
+                      </button>
+                    </div>
+
+                    {isLoadingFiles ? (
+                      <div className="py-8 text-center text-slate-500 text-xs flex items-center justify-center gap-2">
+                        <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
+                        <span>{language === 'ar' ? 'جاري جلب الملفات من Google Drive...' : 'Loading Google Drive spreadsheets...'}</span>
                       </div>
-                      <p className="text-xs text-slate-300">
-                        Are you sure you want to overwrite all data in <strong>"{activeSpreadsheetTitle}"</strong> with {students.length} student records? Existing sheet contents will be replaced.
+                    ) : driveFiles.length === 0 ? (
+                      <p className="text-xs text-slate-500 p-4 bg-[#0a0c10] border border-[#1e293b] rounded-xl text-center">
+                        {language === 'ar' ? 'لم يتم العثور على جداول. يمكنك إنشاء جدول جديد أعلاه.' : 'No spreadsheets found in Drive. Create a new one above.'}
                       </p>
-                      <div className="flex gap-2 justify-end">
-                        <button
-                          type="button"
-                          onClick={() => setShowExportConfirm(false)}
-                          className="px-3 py-1.5 rounded-lg border border-[#334155] text-slate-300 text-xs font-semibold hover:bg-slate-800 cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleExecuteExport}
-                          disabled={isExporting}
-                          className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold uppercase tracking-wider rounded-lg transition-colors cursor-pointer"
-                        >
-                          {isExporting ? 'Exporting...' : 'Yes, Overwrite & Sync'}
-                        </button>
+                    ) : (
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {driveFiles.map((f) => {
+                          const isSelected = activeSpreadsheetId === f.id;
+                          return (
+                            <div
+                              key={f.id}
+                              className={`p-3 rounded-xl border flex items-center justify-between transition-colors ${
+                                isSelected
+                                  ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-200'
+                                  : 'bg-[#0a0c10] border-[#1e293b] text-slate-300 hover:border-slate-700'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5 truncate">
+                                <FileSpreadsheet className={`w-4 h-4 flex-shrink-0 ${isSelected ? 'text-emerald-400' : 'text-slate-400'}`} />
+                                <span className="font-semibold text-xs truncate">{f.name}</span>
+                              </div>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                {f.webViewLink && (
+                                  <a
+                                    href={f.webViewLink}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-1.5 text-slate-400 hover:text-white"
+                                    title="Open in Sheets"
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                  </a>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleSelectSpreadsheet(f)}
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer ${
+                                    isSelected
+                                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                      : 'bg-[#1e293b] hover:bg-slate-700 text-white'
+                                  }`}
+                                >
+                                  {isSelected ? (language === 'ar' ? 'الجدول النشط' : 'Active') : (language === 'ar' ? 'اختيار' : 'Select')}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
+                    )}
+                  </div>
+
+                  {/* Auto-Sync Toggle */}
+                  <div className="p-4 rounded-xl bg-[#0a0c10] border border-[#1e293b] flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                        {language === 'ar' ? 'المزامنة التلقائية مع Google Sheets' : 'Auto-Export on New Record'}
+                      </h4>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {language === 'ar'
+                          ? 'تصدير بيانات كل طالب جديد فور حفظه في النظام'
+                          : 'Automatically append each student record to the active Google Sheet when saved.'}
+                      </p>
                     </div>
-                  ) : (
+                    <input
+                      type="checkbox"
+                      checked={autoSyncEnabled}
+                      onChange={(e) => onToggleAutoSync(e.target.checked)}
+                      className="w-5 h-5 accent-emerald-500 cursor-pointer"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: EXPORT RECORDS */}
+              {activeTab === 'export' && (
+                <div className="space-y-5">
+                  <div className="p-4 rounded-xl bg-[#0a0c10] border border-[#1e293b] space-y-3">
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                      {language === 'ar' ? 'خيارات تصدير السجلات' : 'Export Mode'}
+                    </h4>
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <label
+                        className={`p-3 rounded-xl border cursor-pointer flex flex-col gap-1 transition-colors ${
+                          exportMode === 'overwrite'
+                            ? 'bg-amber-500/10 border-amber-500/40 text-amber-200'
+                            : 'bg-[#0f172a] border-[#1e293b] text-slate-400'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 font-bold text-white">
+                          <input
+                            type="radio"
+                            name="export-mode"
+                            checked={exportMode === 'overwrite'}
+                            onChange={() => setExportMode('overwrite')}
+                            className="accent-amber-500"
+                          />
+                          <span>{language === 'ar' ? 'استبدال كامل (Overwrite)' : 'Overwrite Sheet'}</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400">
+                          {language === 'ar'
+                            ? 'مسح محتوى الجدول وكتابة جميع الطلاب المسجلين حالياً'
+                            : 'Replaces all rows with the full updated database of students.'}
+                        </p>
+                      </label>
+
+                      <label
+                        className={`p-3 rounded-xl border cursor-pointer flex flex-col gap-1 transition-colors ${
+                          exportMode === 'append'
+                            ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-200'
+                            : 'bg-[#0f172a] border-[#1e293b] text-slate-400'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 font-bold text-white">
+                          <input
+                            type="radio"
+                            name="export-mode"
+                            checked={exportMode === 'append'}
+                            onChange={() => setExportMode('append')}
+                            className="accent-emerald-500"
+                          />
+                          <span>{language === 'ar' ? 'إضافة إلى النهاية (Append)' : 'Append Rows'}</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400">
+                          {language === 'ar'
+                            ? 'إضافة السجلات في نهاية الجدول بدون مسح البيانات السابقة'
+                            : 'Adds records to the bottom without erasing existing data.'}
+                        </p>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end">
                     <button
                       type="button"
-                      onClick={() => {
-                        if (exportMode === 'overwrite') {
-                          setShowExportConfirm(true);
-                        } else {
-                          handleExecuteExport();
-                        }
-                      }}
-                      disabled={isExporting || students.length === 0}
-                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-lg shadow-emerald-950/40 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                      onClick={handleExecuteExport}
+                      disabled={isExporting || !activeSpreadsheetId || students.length === 0}
+                      className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-950/40 cursor-pointer disabled:opacity-50"
                     >
                       {isExporting ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                          Syncing with Google Sheets...
-                        </>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
                       ) : (
-                        <>
-                          <Upload className="w-4 h-4" />
-                          Export {students.length} Records to Google Sheets
-                        </>
+                        <Upload className="w-4 h-4" />
                       )}
+                      <span>
+                        {language === 'ar'
+                          ? `تصدير ${students.length} سجلات إلى Google Sheets`
+                          : `Export ${students.length} Records to Google Sheets`}
+                      </span>
                     </button>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-
-          {/* TAB 3: IMPORT FROM GOOGLE SHEETS */}
-          {activeTab === 'import' && (
-            <div className="space-y-4">
-              {!activeSpreadsheetId ? (
-                <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 text-xs text-amber-300">
-                  Please link or select a Google Spreadsheet in the <strong>Spreadsheet Setup</strong> tab first before importing.
+                  </div>
                 </div>
-              ) : (
-                <>
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-[#1e293b] bg-[#0a0c10]">
-                    <div>
-                      <p className="text-xs text-slate-400">Source Sheet: <strong className="text-white">{activeSpreadsheetTitle}</strong></p>
-                      <p className="text-[11px] text-slate-500">Reads rows and converts them into student registry records.</p>
-                    </div>
+              )}
+
+              {/* TAB 3: IMPORT RECORDS */}
+              {activeTab === 'import' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-slate-400">
+                      {language === 'ar'
+                        ? 'استيراد الطلاب والبيانات من جدول Google الحالي إلى قاعدة البيانات'
+                        : 'Read student records from the active Google Spreadsheet and import.'}
+                    </p>
                     <button
                       type="button"
                       onClick={handleFetchImportPreview}
-                      disabled={isImporting}
-                      className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      disabled={isImporting || !activeSpreadsheetId}
+                      className="px-3.5 py-1.5 rounded-xl bg-[#0a0c10] hover:bg-slate-800 border border-[#334155] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                     >
                       {isImporting ? (
-                        <>
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          Reading Sheet...
-                        </>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                       ) : (
-                        <>
-                          <Download className="w-3.5 h-3.5" />
-                          Fetch Rows
-                        </>
+                        <Download className="w-3.5 h-3.5" />
                       )}
+                      <span>{language === 'ar' ? 'معاينة البيانات' : 'Preview Records'}</span>
                     </button>
                   </div>
 
-                  {/* Preview of Imported Records */}
                   {previewStudents && (
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                          Parsed Records ({previewStudents.length} Found)
-                        </p>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-emerald-400 font-semibold">
+                          {language === 'ar'
+                            ? `تم العثور على ${previewStudents.length} سجلاً جاهزاً للاستيراد`
+                            : `Found ${previewStudents.length} student records ready to import`}
+                        </span>
                         <button
                           type="button"
                           onClick={handleConfirmImport}
                           disabled={isImporting || previewStudents.length === 0}
-                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs cursor-pointer shadow-md"
                         >
-                          <Check className="w-4 h-4" />
-                          Import All ({previewStudents.length}) Into Registry
+                          {language === 'ar' ? 'تأكيد الاستيراد الآن' : 'Confirm Import'}
                         </button>
                       </div>
 
-                      {previewStudents.length === 0 ? (
-                        <div className="p-4 rounded-xl border border-[#1e293b] bg-[#0a0c10] text-center text-xs text-slate-500">
-                          No valid student rows found in the selected sheet.
-                        </div>
-                      ) : (
-                        <div className="max-h-60 overflow-y-auto border border-[#1e293b] rounded-xl overflow-hidden">
-                          <table className="w-full text-left text-xs">
-                            <thead className="bg-[#0a0c10] text-slate-400 uppercase text-[10px] border-b border-[#1e293b]">
-                              <tr>
-                                <th className="p-2.5">Student Name</th>
-                                <th className="p-2.5">Birth Date</th>
-                                <th className="p-2.5">Phone Number</th>
-                                <th className="p-2.5">Collection Date</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-[#1e293b] bg-[#0f172a]">
-                              {previewStudents.slice(0, 15).map((s, idx) => (
-                                <tr key={idx} className="hover:bg-slate-800/40">
-                                  <td className="p-2.5 font-semibold text-white">{s.studentName}</td>
-                                  <td className="p-2.5 font-mono text-slate-300">{s.birthDate}</td>
-                                  <td className="p-2.5 font-mono text-amber-400">{s.phoneNumber}</td>
-                                  <td className="p-2.5 font-mono text-slate-400">{s.collectionDate}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                          {previewStudents.length > 15 && (
-                            <div className="p-2 text-center text-[10px] text-slate-500 bg-[#0a0c10]">
-                              Showing first 15 of {previewStudents.length} records.
+                      <div className="max-h-48 overflow-y-auto rounded-xl border border-[#1e293b] bg-[#0a0c10] divide-y divide-[#1e293b] text-xs">
+                        {previewStudents.slice(0, 10).map((ps, idx) => (
+                          <div key={idx} className="p-2.5 flex items-center justify-between text-slate-300">
+                            <div>
+                              <span className="font-bold text-white">{ps.studentName}</span>
+                              <span className="text-slate-500 font-mono text-[11px] block">
+                                {ps.phoneNumber} &bull; {ps.province || 'Al-Najaf'}
+                              </span>
                             </div>
-                          )}
-                        </div>
-                      )}
+                            {ps.receiptNo && (
+                              <span className="font-mono text-amber-400 text-[11px] bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                                {ps.receiptNo}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
-                </>
+                </div>
               )}
-            </div>
+            </>
           )}
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-4 bg-[#0a0c10] border-t border-[#1e293b] flex items-center justify-between text-xs text-slate-400">
-          <div className="flex items-center gap-1.5">
-            <FileText className="w-3.5 h-3.5 text-slate-500" />
-            <span>Google Sheets v4 & Drive API v3</span>
-          </div>
+        {/* Modal Footer */}
+        <div className="px-6 py-3.5 bg-[#0a0c10] border-t border-[#1e293b] flex justify-end">
           <button
             type="button"
             onClick={onClose}
             className="px-4 py-2 rounded-xl border border-[#334155] text-slate-300 hover:bg-slate-800 font-semibold text-xs transition-colors cursor-pointer"
           >
-            Close
+            {t.closeBtn}
           </button>
         </div>
       </div>

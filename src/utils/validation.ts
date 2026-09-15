@@ -1,4 +1,5 @@
-import { StudentFormData, ValidationErrors } from '../types';
+import { StudentFormData, ValidationErrors, Language } from '../types';
+import { translations } from './translations';
 
 /**
  * Gets today's date formatted as YYYY-MM-DD
@@ -14,14 +15,14 @@ export function getTodayDateString(): string {
 /**
  * Formats date string (YYYY-MM-DD) into readable localized format
  */
-export function formatDisplayDate(dateStr?: string): string {
+export function formatDisplayDate(dateStr?: string, lang: Language = 'en'): string {
   if (!dateStr) return '—';
   try {
     const [year, month, day] = dateStr.split('-');
     if (!year || !month || !day) return dateStr;
     const date = new Date(Number(year), Number(month) - 1, Number(day));
     if (isNaN(date.getTime())) return dateStr;
-    return date.toLocaleDateString('en-US', {
+    return date.toLocaleDateString(lang === 'ar' ? 'ar-IQ' : 'en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -55,9 +56,13 @@ export function calculateAge(birthDateStr?: string): number | null {
 /**
  * Detects Iraqi telecom network or generic type
  */
-export function detectCarrier(phoneNumber?: string): { name: string; badgeColor: string; isIraqi: boolean } | null {
+export function detectCarrier(
+  phoneNumber?: string,
+  lang: Language = 'en'
+): { name: string; badgeColor: string; isIraqi: boolean } | null {
   if (!phoneNumber) return null;
   const cleaned = phoneNumber.replace(/[\s\-\(\)]/g, '');
+  const t = translations[lang];
 
   // Normalized Iraqi local number (e.g., 0780..., +964780..., 00964780...)
   let iraqiPrefix = '';
@@ -71,21 +76,41 @@ export function detectCarrier(phoneNumber?: string): { name: string; badgeColor:
 
   if (iraqiPrefix) {
     if (iraqiPrefix.startsWith('78') || iraqiPrefix.startsWith('79')) {
-      return { name: 'Zain Iraq', badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300', isIraqi: true };
+      return {
+        name: t.carrierZain,
+        badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+        isIraqi: true,
+      };
     }
     if (iraqiPrefix.startsWith('77')) {
-      return { name: 'AsiaCell', badgeColor: 'bg-purple-100 text-purple-800 border-purple-300', isIraqi: true };
+      return {
+        name: t.carrierAsiacell,
+        badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+        isIraqi: true,
+      };
     }
     if (iraqiPrefix.startsWith('75')) {
-      return { name: 'Korek', badgeColor: 'bg-amber-100 text-amber-800 border-amber-300', isIraqi: true };
+      return {
+        name: t.carrierKorek,
+        badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+        isIraqi: true,
+      };
     }
     if (iraqiPrefix.startsWith('7')) {
-      return { name: 'Iraq Mobile', badgeColor: 'bg-blue-100 text-blue-800 border-blue-300', isIraqi: true };
+      return {
+        name: t.carrierIraqMobile,
+        badgeColor: 'bg-sky-500/20 text-sky-300 border-sky-500/30',
+        isIraqi: true,
+      };
     }
   }
 
   if (cleaned.startsWith('+') || cleaned.length >= 8) {
-    return { name: 'International', badgeColor: 'bg-slate-100 text-slate-700 border-slate-300', isIraqi: false };
+    return {
+      name: t.carrierInternational,
+      badgeColor: 'bg-slate-500/20 text-slate-300 border-slate-500/30',
+      isIraqi: false,
+    };
   }
 
   return null;
@@ -102,7 +127,6 @@ export function isValidPhoneNumber(phone: string): boolean {
   if (!phone || typeof phone !== 'string') return false;
   const cleaned = phone.trim().replace(/[\s\-\(\)\.]/g, '');
 
-  // Empty check handled separately
   if (cleaned.length === 0) return false;
 
   // Iraqi format standard (07 followed by 9 digits = 11 digits total)
@@ -135,60 +159,68 @@ export function isValidPhoneNumber(phone: string): boolean {
 /**
  * Validates the entire student form data
  */
-export function validateStudentForm(data: StudentFormData): {
+export function validateStudentForm(
+  data: StudentFormData,
+  lang: Language = 'en'
+): {
   isValid: boolean;
   errors: ValidationErrors;
 } {
+  const t = translations[lang];
   const errors: ValidationErrors = {};
 
   // 1. Student Name validation
   if (!data.studentName || data.studentName.trim().length === 0) {
-    errors.studentName = 'Student Name is required.';
+    errors.studentName = t.valNameRequired;
   } else if (data.studentName.trim().length < 2) {
-    errors.studentName = 'Student Name must be at least 2 characters.';
+    errors.studentName = t.valNameMin;
   } else if (data.studentName.trim().length > 100) {
-    errors.studentName = 'Student Name cannot exceed 100 characters.';
+    errors.studentName = t.valNameMax;
   }
 
   // 2. Birth Date validation
   if (!data.birthDate || data.birthDate.trim().length === 0) {
-    errors.birthDate = 'Birth Date is required.';
+    errors.birthDate = t.valBirthRequired;
   } else {
     const today = getTodayDateString();
     if (data.birthDate > today) {
-      errors.birthDate = 'Birth Date cannot be a future date.';
+      errors.birthDate = t.valBirthFuture;
     } else if (data.birthDate < '1920-01-01') {
-      errors.birthDate = 'Please enter a valid birth date (after 1920).';
+      errors.birthDate = t.valBirthValid;
     }
   }
 
   // 3. Primary Phone Number validation
   if (!data.phoneNumber || data.phoneNumber.trim().length === 0) {
-    errors.phoneNumber = 'Phone Number is required.';
+    errors.phoneNumber = t.valPhoneRequired;
   } else if (!isValidPhoneNumber(data.phoneNumber)) {
-    errors.phoneNumber =
-      'Please enter a valid phone number (e.g. 07801234567, 07701234567, or +964 780 123 4567).';
+    errors.phoneNumber = t.valPhoneInvalid;
   }
 
-  // 4. Additional Phone Number validation (Optional)
-  if (data.additionalPhoneNumber && data.additionalPhoneNumber.trim().length > 0) {
-    if (!isValidPhoneNumber(data.additionalPhoneNumber)) {
-      errors.additionalPhoneNumber =
-        'Additional Phone Number format is invalid. Use e.g. 07501234567 or +964 750 123 4567.';
-    } else if (data.additionalPhoneNumber.trim().replace(/\s/g, '') === data.phoneNumber.trim().replace(/\s/g, '')) {
-      errors.additionalPhoneNumber =
-        'Additional Phone Number cannot be identical to the primary phone number.';
+  // 4. Parents Phone Number validation (Optional / Secondary contact)
+  const parentPhone = (data.parentPhoneNumber || data.additionalPhoneNumber || '').trim();
+  if (parentPhone.length > 0) {
+    if (!isValidPhoneNumber(parentPhone)) {
+      errors.parentPhoneNumber = t.valParentPhoneInvalid;
+      errors.additionalPhoneNumber = errors.parentPhoneNumber;
+    } else if (parentPhone.replace(/\s/g, '') === data.phoneNumber.trim().replace(/\s/g, '')) {
+      errors.parentPhoneNumber = t.valParentPhoneIdentical;
+      errors.additionalPhoneNumber = errors.parentPhoneNumber;
     }
   }
 
-  // 5. Collection Date validation
+  // 5. Gender validation
+  if (data.gender && data.gender !== 'male' && data.gender !== 'female' && data.gender !== '') {
+    errors.gender = t.valGenderInvalid;
+  }
+
+  // 6. Collection Date validation
   if (!data.collectionDate || data.collectionDate.trim().length === 0) {
-    errors.collectionDate = 'Collection Date is required. Click "Insert Collection Date".';
+    errors.collectionDate = t.valCollectionDateRequired;
   } else {
-    // Should be valid format
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (!dateRegex.test(data.collectionDate)) {
-      errors.collectionDate = 'Collection Date must be in YYYY-MM-DD format.';
+      errors.collectionDate = t.valCollectionDateFormat;
     }
   }
 

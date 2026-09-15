@@ -6,12 +6,17 @@ import { createServer as createViteServer } from 'vite';
 interface StudentRecord {
   id: string;
   studentName: string;
+  gender?: 'male' | 'female' | '';
   birthDate: string;
   phoneNumber: string;
+  parentPhoneNumber?: string;
   additionalPhoneNumber?: string;
+  province?: string;
+  residenceDetails?: string;
   collectionDate: string;
   createdAt: string;
   updatedAt: string;
+  receiptNo?: string;
   notes?: string;
   department?: string;
   academicYear?: string;
@@ -25,72 +30,87 @@ if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-// Initial seed data with authentic university student records
+// Initial seed data with authentic student records centered in Al-Najaf and Iraqi provinces
 const INITIAL_STUDENTS: StudentRecord[] = [
   {
     id: 'std-2026-001',
     studentName: 'Ali Hussein Al-Moussawi',
+    gender: 'male',
     birthDate: '2004-03-15',
     phoneNumber: '07801234567',
+    parentPhoneNumber: '07709876543',
     additionalPhoneNumber: '07709876543',
+    province: 'Al-Najaf',
+    residenceDetails: 'Al-Ghadeer District, Street 14, Near Grand Mosque',
     collectionDate: '2026-08-26',
     createdAt: '2026-08-26T09:15:00.000Z',
     updatedAt: '2026-08-26T09:15:00.000Z',
-    department: 'Computer Science & Engineering',
-    academicYear: 'Year 2',
-    notes: 'Transferred from University of Baghdad.',
+    receiptNo: 'REC-2026-0101',
+    notes: 'REC-2026-0101',
   },
   {
     id: 'std-2026-002',
     studentName: 'Zainab Kareem Al-Saadi',
+    gender: 'female',
     birthDate: '2003-11-22',
     phoneNumber: '07705551234',
-    additionalPhoneNumber: '',
+    parentPhoneNumber: '07801122334',
+    additionalPhoneNumber: '07801122334',
+    province: 'Al-Najaf',
+    residenceDetails: 'Kufa City, Al-Kindi Neighborhood',
     collectionDate: '2026-08-26',
     createdAt: '2026-08-26T10:30:00.000Z',
     updatedAt: '2026-08-26T10:30:00.000Z',
-    department: 'Information Technology',
-    academicYear: 'Year 3',
-    notes: 'Dean honor list student.',
+    receiptNo: 'REC-2026-0102',
+    notes: 'REC-2026-0102',
   },
   {
     id: 'std-2026-003',
     studentName: 'Mustafa Ahmed Al-Janabi',
+    gender: 'male',
     birthDate: '2005-06-08',
     phoneNumber: '07503338899',
+    parentPhoneNumber: '07804441122',
     additionalPhoneNumber: '07804441122',
+    province: 'Karbala',
+    residenceDetails: 'Al-Hur District, Main Avenue',
     collectionDate: '2026-08-25',
     createdAt: '2026-08-25T14:20:00.000Z',
     updatedAt: '2026-08-25T14:20:00.000Z',
-    department: 'Civil Engineering',
-    academicYear: 'Year 1',
-    notes: 'Freshman student registration.',
+    receiptNo: 'REC-2026-0103',
+    notes: 'REC-2026-0103',
   },
   {
     id: 'std-2026-004',
     studentName: 'Maryam Hassan Al-Basri',
+    gender: 'female',
     birthDate: '2004-09-18',
     phoneNumber: '07817774433',
+    parentPhoneNumber: '',
     additionalPhoneNumber: '',
+    province: 'Al-Najaf',
+    residenceDetails: 'Al-Askari Quarter, Street 7',
     collectionDate: '2026-08-24',
     createdAt: '2026-08-24T11:00:00.000Z',
     updatedAt: '2026-08-24T11:00:00.000Z',
-    department: 'Biomedical Sciences',
-    academicYear: 'Year 2',
-    notes: 'Laboratory safety training completed.',
+    receiptNo: 'REC-2026-0104',
+    notes: 'REC-2026-0104',
   },
   {
     id: 'std-2026-005',
     studentName: 'Omar Tariq Al-Nuaimi',
+    gender: 'male',
     birthDate: '2002-12-04',
     phoneNumber: '+9647809988776',
+    parentPhoneNumber: '07712233445',
     additionalPhoneNumber: '07712233445',
+    province: 'Baghdad',
+    residenceDetails: 'Al-Karrada, District 903',
     collectionDate: '2026-08-20',
     createdAt: '2026-08-20T08:45:00.000Z',
     updatedAt: '2026-08-20T08:45:00.000Z',
-    department: 'Business Administration',
-    academicYear: 'Year 4',
-    notes: 'Graduation project team lead.',
+    receiptNo: 'REC-2026-0095',
+    notes: 'REC-2026-0095',
   }
 ];
 
@@ -102,7 +122,13 @@ function readStudents(): StudentRecord[] {
       return INITIAL_STUDENTS;
     }
     const raw = fs.readFileSync(DATA_FILE, 'utf-8');
-    return JSON.parse(raw) as StudentRecord[];
+    const list = JSON.parse(raw) as StudentRecord[];
+    // Migrate any older records to include receiptNo if missing
+    return list.map((s) => ({
+      ...s,
+      receiptNo: s.receiptNo || s.notes || '',
+      province: s.province || 'Al-Najaf',
+    }));
   } catch (err) {
     console.error('Error reading students data file:', err);
     return INITIAL_STUDENTS;
@@ -141,19 +167,34 @@ async function startServer() {
   // GET /api/students - List students with optional filter/search/sort
   app.get('/api/students', (req, res) => {
     try {
-      const { search, collectionDate, sortBy, sortOrder } = req.query;
+      const { search, collectionDate, sortBy, sortOrder, province, gender } = req.query;
       let students = readStudents();
 
-      // Search by student name or phone number
+      // Search by student name, phone number, parent phone, province, or receipt number
       if (search && typeof search === 'string' && search.trim().length > 0) {
         const q = search.trim().toLowerCase();
         students = students.filter(
           (s) =>
             s.studentName.toLowerCase().includes(q) ||
             s.phoneNumber.replace(/[\s\-\(\)]/g, '').includes(q) ||
+            (s.parentPhoneNumber && s.parentPhoneNumber.replace(/[\s\-\(\)]/g, '').includes(q)) ||
             (s.additionalPhoneNumber && s.additionalPhoneNumber.replace(/[\s\-\(\)]/g, '').includes(q)) ||
-            (s.department && s.department.toLowerCase().includes(q))
+            (s.province && s.province.toLowerCase().includes(q)) ||
+            (s.residenceDetails && s.residenceDetails.toLowerCase().includes(q)) ||
+            (s.receiptNo && s.receiptNo.toLowerCase().includes(q)) ||
+            (s.notes && s.notes.toLowerCase().includes(q))
         );
+      }
+
+      // Filter by province
+      if (province && typeof province === 'string' && province.trim().length > 0 && province !== 'all') {
+        const prov = province.trim().toLowerCase();
+        students = students.filter((s) => s.province && s.province.toLowerCase().includes(prov));
+      }
+
+      // Filter by gender
+      if (gender && typeof gender === 'string' && (gender === 'male' || gender === 'female')) {
+        students = students.filter((s) => s.gender === gender);
       }
 
       // Filter by collection date
@@ -219,7 +260,19 @@ async function startServer() {
   // POST /api/students - Create new student
   app.post('/api/students', (req, res) => {
     try {
-      const { studentName, birthDate, phoneNumber, additionalPhoneNumber, collectionDate, notes, department, academicYear } = req.body;
+      const {
+        studentName,
+        gender,
+        birthDate,
+        phoneNumber,
+        parentPhoneNumber,
+        additionalPhoneNumber,
+        province,
+        residenceDetails,
+        collectionDate,
+        receiptNo,
+        notes,
+      } = req.body;
 
       // Validation
       if (!studentName || !studentName.trim()) {
@@ -244,19 +297,24 @@ async function startServer() {
       const students = readStudents();
       const newId = `std-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
       const nowIso = new Date().toISOString();
+      const parentPhoneFinal = (parentPhoneNumber || additionalPhoneNumber || '').trim();
+      const receiptNoFinal = (receiptNo || notes || '').trim();
 
       const newStudent: StudentRecord = {
         id: newId,
         studentName: studentName.trim(),
+        gender: gender === 'male' || gender === 'female' ? gender : '',
         birthDate: birthDate.trim(),
         phoneNumber: phoneNumber.trim(),
-        additionalPhoneNumber: (additionalPhoneNumber || '').trim(),
+        parentPhoneNumber: parentPhoneFinal,
+        additionalPhoneNumber: parentPhoneFinal,
+        province: (province || 'Al-Najaf').trim(),
+        residenceDetails: (residenceDetails || '').trim(),
         collectionDate: collectionDate.trim(),
         createdAt: nowIso,
         updatedAt: nowIso,
-        notes: (notes || '').trim(),
-        department: (department || '').trim(),
-        academicYear: (academicYear || '').trim(),
+        receiptNo: receiptNoFinal,
+        notes: receiptNoFinal,
       };
 
       // Add to beginning of array
@@ -278,7 +336,19 @@ async function startServer() {
   app.put('/api/students/:id', (req, res) => {
     try {
       const { id } = req.params;
-      const { studentName, birthDate, phoneNumber, additionalPhoneNumber, collectionDate, notes, department, academicYear } = req.body;
+      const {
+        studentName,
+        gender,
+        birthDate,
+        phoneNumber,
+        parentPhoneNumber,
+        additionalPhoneNumber,
+        province,
+        residenceDetails,
+        collectionDate,
+        receiptNo,
+        notes,
+      } = req.body;
 
       // Validation
       if (!studentName || !studentName.trim()) {
@@ -301,17 +371,40 @@ async function startServer() {
       }
 
       const nowIso = new Date().toISOString();
+      const parentPhoneFinal = (
+        parentPhoneNumber !== undefined
+          ? parentPhoneNumber
+          : additionalPhoneNumber !== undefined
+          ? additionalPhoneNumber
+          : students[index].parentPhoneNumber || students[index].additionalPhoneNumber || ''
+      ).trim();
+
+      const receiptNoFinal = (
+        receiptNo !== undefined ? receiptNo : notes !== undefined ? notes : students[index].receiptNo || students[index].notes || ''
+      ).trim();
+
       const updatedStudent: StudentRecord = {
         ...students[index],
         studentName: studentName.trim(),
+        gender:
+          gender !== undefined
+            ? gender === 'male' || gender === 'female'
+              ? gender
+              : ''
+            : students[index].gender,
         birthDate: birthDate.trim(),
         phoneNumber: phoneNumber.trim(),
-        additionalPhoneNumber: (additionalPhoneNumber || '').trim(),
+        parentPhoneNumber: parentPhoneFinal,
+        additionalPhoneNumber: parentPhoneFinal,
+        province: province !== undefined ? province.trim() : students[index].province || 'Al-Najaf',
+        residenceDetails:
+          residenceDetails !== undefined
+            ? residenceDetails.trim()
+            : students[index].residenceDetails || '',
         collectionDate: collectionDate.trim(),
         updatedAt: nowIso,
-        notes: notes !== undefined ? notes.trim() : students[index].notes,
-        department: department !== undefined ? department.trim() : students[index].department,
-        academicYear: academicYear !== undefined ? academicYear.trim() : students[index].academicYear,
+        receiptNo: receiptNoFinal,
+        notes: receiptNoFinal,
       };
 
       students[index] = updatedStudent;
@@ -362,7 +455,9 @@ async function startServer() {
 
       const todayCount = students.filter((s) => s.collectionDate === todayStr).length;
       const thisMonthCount = students.filter((s) => s.collectionDate.startsWith(monthPrefix)).length;
-      const withAdditionalPhoneCount = students.filter((s) => !!s.additionalPhoneNumber).length;
+      const withParentsPhoneCount = students.filter(
+        (s) => !!(s.parentPhoneNumber || s.additionalPhoneNumber)
+      ).length;
 
       res.json({
         success: true,
@@ -370,11 +465,12 @@ async function startServer() {
           totalStudents: students.length,
           todayCount,
           thisMonthCount,
-          withAdditionalPhoneCount,
+          withParentsPhoneCount,
         },
       });
     } catch (err) {
-      res.status(500).json({ success: false, error: 'Failed to calculate stats' });
+      console.error('Error generating stats:', err);
+      res.status(500).json({ success: false, error: 'Failed to generate statistics' });
     }
   });
 
@@ -394,7 +490,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`University Student Info Server running on http://localhost:${PORT}`);
+    console.log(`Server running on port ${PORT}`);
   });
 }
 

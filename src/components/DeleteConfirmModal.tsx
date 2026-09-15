@@ -1,12 +1,14 @@
 import React from 'react';
 import { AlertTriangle, Trash2, X } from 'lucide-react';
-import { Student } from '../types';
+import { Student, Language } from '../types';
+import { translations } from '../utils/translations';
 
 interface DeleteConfirmModalProps {
   student: Student | null;
   onConfirm: () => void;
   onCancel: () => void;
   isDeleting: boolean;
+  language: Language;
 }
 
 export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
@@ -14,7 +16,10 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
   onConfirm,
   onCancel,
   isDeleting,
+  language,
 }) => {
+  const t = translations[language];
+
   if (!student) return null;
 
   return (
@@ -30,23 +35,28 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
           </div>
 
           <h3 className="text-lg font-bold text-white mb-1 tracking-tight">
-            Confirm Student Record Deletion
+            {t.deleteModalTitle}
           </h3>
 
           <p className="text-sm text-slate-400 mb-4">
-            Are you sure you want to permanently delete the student information record for{' '}
+            {t.deleteModalConfirmText}{' '}
             <strong className="text-white font-semibold">{student.studentName}</strong>?
           </p>
 
-          <div className="p-3 bg-[#0a0c10] border border-[#1e293b] rounded-xl text-left text-xs text-slate-300 space-y-1 mb-6 font-mono">
+          <div className="p-3 bg-[#0a0c10] border border-[#1e293b] rounded-xl text-left rtl:text-right text-xs text-slate-300 space-y-1 mb-6 font-mono">
             <p>
-              <strong className="text-slate-400">Student ID:</strong> {student.id}
+              <strong className="text-slate-400">ID:</strong> {student.id}
             </p>
             <p>
-              <strong className="text-slate-400">Primary Phone:</strong> {student.phoneNumber}
+              <strong className="text-slate-400">{t.studentPhoneLabel}:</strong> {student.phoneNumber}
             </p>
+            {student.receiptNo && (
+              <p>
+                <strong className="text-slate-400">{t.receiptNoLabel}:</strong> {student.receiptNo}
+              </p>
+            )}
             <p className="text-rose-400 italic mt-1 font-sans">
-              This action cannot be undone and will remove the student from registry databases.
+              {t.deleteModalWarning}
             </p>
           </div>
 
@@ -58,7 +68,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
               disabled={isDeleting}
               className="flex-1 px-4 py-2.5 rounded-xl border border-[#334155] bg-transparent hover:bg-slate-800 text-slate-300 font-semibold text-xs uppercase tracking-wider transition-colors cursor-pointer disabled:opacity-50"
             >
-              Cancel
+              {t.cancelDeleteBtn}
             </button>
             <button
               type="button"
@@ -70,12 +80,12 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
               {isDeleting ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Deleting...</span>
+                  <span>{t.deletingBtn}</span>
                 </>
               ) : (
                 <>
                   <Trash2 className="w-4 h-4" />
-                  <span>Delete Student</span>
+                  <span>{t.confirmDeleteBtn}</span>
                 </>
               )}
             </button>

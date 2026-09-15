@@ -9,21 +9,40 @@ import { NotificationToast, ToastMessage } from './components/NotificationToast'
 import { GoogleSheetsModal } from './components/GoogleSheetsModal';
 import { GoogleSheetsBar } from './components/GoogleSheetsBar';
 import { StudentService } from './services/api';
-import { Student, StudentFormData } from './types';
+import { Student, StudentFormData, Language } from './types';
 import { Shield, BookOpen } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { initAuth, getAccessToken } from './services/firebaseAuth';
 import {
-  appendStudentToSpreadsheet,
   syncAllStudentsToSpreadsheet,
   ParsedSheetStudent,
 } from './services/googleSheets';
+import { translations } from './utils/translations';
 
 export default function App() {
   const [students, setStudents] = useState<Student[]>([]);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [viewingStudent, setViewingStudent] = useState<Student | null>(null);
   const [deletingStudent, setDeletingStudent] = useState<Student | null>(null);
+
+  // Language state (English / Arabic) with localStorage persistence
+  const [language, setLanguage] = useState<Language>(() => {
+    const saved = localStorage.getItem('student_app_lang');
+    return saved === 'ar' || saved === 'en' ? saved : 'en';
+  });
+
+  const t = translations[language];
+
+  // Sync document direction and html lang tag
+  useEffect(() => {
+    document.documentElement.lang = language;
+    document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr';
+    localStorage.setItem('student_app_lang', language);
+  }, [language]);
+
+  const handleToggleLanguage = () => {
+    setLanguage((prev) => (prev === 'en' ? 'ar' : 'en'));
+  };
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -97,8 +116,8 @@ export default function App() {
     localStorage.setItem('google_sheets_auto_sync', enabled ? 'true' : 'false');
     showToast(
       enabled
-        ? 'Real-Time Google Sheets Auto-Sync Enabled'
-        : 'Google Sheets Auto-Sync Disabled',
+        ? (language === 'ar' ? 'تم تفعيل التصدير التلقائي إلى Google Sheets' : 'Real-Time Google Sheets Auto-Sync Enabled')
+        : (language === 'ar' ? 'تم تعطيل التصدير التلقائي' : 'Google Sheets Auto-Sync Disabled'),
       'info'
     );
   };
@@ -111,11 +130,16 @@ export default function App() {
       setStudents(data);
     } catch (err) {
       console.error('Failed to load students:', err);
-      showToast('Unable to connect to registry server. Using offline local records.', 'error');
+      showToast(
+        language === 'ar'
+          ? 'تعذر الاتصال بخادم السجلات. جاري استخدام السجلات المحلية.'
+          : 'Unable to connect to registry server. Using offline local records.',
+        'error'
+      );
     } finally {
       setIsLoading(false);
     }
-  }, [showToast]);
+  }, [language, showToast]);
 
   useEffect(() => {
     loadStudents();
@@ -131,7 +155,12 @@ export default function App() {
     const token = await getAccessToken();
     if (!token) {
       setIsSheetsModalOpen(true);
-      showToast('Please sign in with Google to sync to your spreadsheet.', 'info');
+      showToast(
+        language === 'ar'
+          ? 'يرجى تسجيل الدخول بحساب Google لمزامنة الجدول.'
+          : 'Please sign in with Google to sync to your spreadsheet.',
+        'info'
+      );
       return;
     }
 
@@ -141,10 +170,14 @@ export default function App() {
         token,
         activeSpreadsheetId,
         students,
-        'overwrite',
-        'Student Registry'
+        'overwrite'
       );
-      showToast(`Synchronized ${students.length} student records with "${activeSpreadsheetTitle || 'Google Sheet'}"!`, 'success');
+      showToast(
+        language === 'ar'
+          ? `تمت مزامنة ${students.length} سجلاً مع "${activeSpreadsheetTitle || 'Google Sheets'}"!`
+          : `Synchronized ${students.length} student records with "${activeSpreadsheetTitle || 'Google Sheet'}"!`,
+        'success'
+      );
     } catch (err: any) {
       console.error('Quick export error:', err);
       showToast(err.message || 'Failed to sync with Google Sheet.', 'error');
@@ -165,7 +198,12 @@ export default function App() {
             prev.map((s) => (s.id === editingStudent.id ? res.data : s))
           );
           setEditingStudent(null);
-          showToast(res.message || 'Student information updated successfully.', 'success');
+          showToast(
+            language === 'ar'
+              ? 'تم تحديث بيانات الطالب بنجاح.'
+              : res.message || 'Student information updated successfully.',
+            'success'
+          );
         }
       } else {
         // Create new
@@ -173,15 +211,30 @@ export default function App() {
         if (res.success) {
           const createdStudent = res.data;
           setStudents((prev) => [createdStudent, ...prev]);
-          showToast(res.message || 'Student information saved successfully.', 'success');
+          showToast(
+            language === 'ar'
+              ? 'تم حفظ بيانات الطالب بنجاح في السجل.'
+              : res.message || 'Student information saved successfully.',
+            'success'
+          );
 
           // Auto-sync to Google Sheets if enabled
           if (autoSyncEnabled && activeSpreadsheetId) {
             try {
               const token = await getAccessToken();
               if (token) {
-                await appendStudentToSpreadsheet(token, activeSpreadsheetId, createdStudent, 'Student Registry');
-                showToast(`Auto-synced "${createdStudent.studentName}" to Google Sheets`, 'success');
+                await syncAllStudentsToSpreadsheet(
+                  token,
+                  activeSpreadsheetId,
+                  [createdStudent, ...students],
+                  'overwrite'
+                );
+                showToast(
+                  language === 'ar'
+                    ? `تم التصدير التلقائي للطالب "${createdStudent.studentName}" إلى Google Sheets`
+                    : `Auto-synced "${createdStudent.studentName}" to Google Sheets`,
+                  'success'
+                );
               }
             } catch (sheetErr) {
               console.warn('Auto-sync to Google Sheets failed:', sheetErr);
@@ -190,7 +243,12 @@ export default function App() {
         }
       }
     } catch (err: any) {
-      showToast(err.message || 'An error occurred while saving student.', 'error');
+      showToast(
+        language === 'ar'
+          ? 'حدث خطأ أثناء حفظ بيانات الطالب.'
+          : err.message || 'An error occurred while saving student.',
+        'error'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -203,12 +261,16 @@ export default function App() {
       try {
         const res = await StudentService.create({
           studentName: item.studentName,
+          gender: item.gender || 'male',
           birthDate: item.birthDate,
           phoneNumber: item.phoneNumber,
-          additionalPhoneNumber: item.additionalPhoneNumber || '',
+          parentPhoneNumber: item.parentPhoneNumber || item.additionalPhoneNumber || '',
+          additionalPhoneNumber: item.parentPhoneNumber || item.additionalPhoneNumber || '',
+          province: item.province || 'Al-Najaf',
+          residenceDetails: item.residenceDetails || '',
           collectionDate: item.collectionDate,
-          department: item.department || '',
-          notes: item.notes || '',
+          receiptNo: item.receiptNo || item.notes || '',
+          notes: item.receiptNo || item.notes || '',
         });
         if (res.success) {
           successCount++;
@@ -227,10 +289,10 @@ export default function App() {
   // Trigger Edit
   const handleStartEdit = (student: Student) => {
     setEditingStudent(student);
-    // Smooth scroll to form
-    const formEl = document.getElementById('student-collection-form');
+    const formEl = document.getElementById('student-name-input');
     if (formEl) {
-      formEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      formEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      formEl.focus();
     }
   };
 
@@ -246,29 +308,42 @@ export default function App() {
       const res = await StudentService.delete(deletingStudent.id);
       if (res.success) {
         setStudents((prev) => prev.filter((s) => s.id !== deletingStudent.id));
-        showToast(res.message || 'Student record deleted successfully.', 'info');
+        showToast(
+          language === 'ar'
+            ? `تم حذف سجل الطالب ${deletingStudent.studentName} بنجاح.`
+            : res.message || 'Student record deleted successfully.',
+          'info'
+        );
       }
       setDeletingStudent(null);
     } catch (err: any) {
-      showToast(err.message || 'Failed to delete student.', 'error');
+      showToast(
+        language === 'ar' ? 'فشل حذف سجل الطالب.' : err.message || 'Failed to delete student.',
+        'error'
+      );
     } finally {
       setIsDeleting(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0c10] text-[#e2e8f0] flex flex-col font-sans antialiased selection:bg-amber-500 selection:text-black">
+    <div
+      dir={language === 'ar' ? 'rtl' : 'ltr'}
+      className="min-h-screen bg-[#0a0c10] text-[#e2e8f0] flex flex-col font-sans antialiased selection:bg-amber-500 selection:text-black"
+    >
       {/* University Header */}
       <Header
         totalStudents={students.length}
         onOpenGoogleSheets={() => setIsSheetsModalOpen(true)}
         isSheetsConnected={!!authUser && !!activeSpreadsheetId}
         sheetsTitle={activeSpreadsheetTitle}
+        language={language}
+        onToggleLanguage={handleToggleLanguage}
       />
 
       {/* Main Content Workspace */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Academic Notice Banner */}
+        {/* Notice Banner */}
         <div className="mb-6 bg-[#0f172a] rounded-xl p-4 border border-[#1e293b] shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center flex-shrink-0">
@@ -276,20 +351,20 @@ export default function App() {
             </div>
             <div>
               <p className="text-sm font-bold text-white uppercase tracking-wide">
-                Official Student Intake & Record Management
+                {t.officialNoticeTitle}
               </p>
               <p className="text-xs text-slate-400">
-                All records entered below are validated, formatted, and persistently stored in the institution database.
+                {t.officialNoticeDesc}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20 self-start sm:self-auto">
             <Shield className="w-3.5 h-3.5 text-emerald-400" />
-            <span>FERPA / Privacy Compliant Storage</span>
+            <span>{t.complianceBadge}</span>
           </div>
         </div>
 
-        {/* Google Sheets Engine Banner */}
+        {/* Google Sheets Integration Bar */}
         <GoogleSheetsBar
           user={authUser}
           activeSpreadsheetId={activeSpreadsheetId}
@@ -300,20 +375,22 @@ export default function App() {
           onOpenModal={() => setIsSheetsModalOpen(true)}
           onQuickExport={handleQuickExport}
           isExporting={isQuickExporting}
+          language={language}
         />
 
         {/* Statistical Overview */}
-        <StatsBanner students={students} />
+        <StatsBanner students={students} language={language} />
 
-        {/* Form Component: Student Information Intake */}
+        {/* Student Intake Form */}
         <StudentForm
           editingStudent={editingStudent}
           onSave={handleSaveStudent}
           onCancelEdit={handleCancelEdit}
           isSubmitting={isSubmitting}
+          language={language}
         />
 
-        {/* Student Records Table Component */}
+        {/* Student Records Table */}
         <StudentTable
           students={students}
           onEdit={handleStartEdit}
@@ -321,6 +398,7 @@ export default function App() {
           onViewDetails={(student) => setViewingStudent(student)}
           onRefresh={loadStudents}
           isLoading={isLoading}
+          language={language}
         />
       </main>
 
@@ -335,6 +413,7 @@ export default function App() {
         onDeleteRequest={(student) => {
           setDeletingStudent(student);
         }}
+        language={language}
       />
 
       {/* 2. Delete Confirmation Modal */}
@@ -343,6 +422,7 @@ export default function App() {
         onConfirm={handleDeleteConfirm}
         onCancel={() => setDeletingStudent(null)}
         isDeleting={isDeleting}
+        language={language}
       />
 
       {/* 3. Google Sheets Integration Modal */}
@@ -362,27 +442,27 @@ export default function App() {
         autoSyncEnabled={autoSyncEnabled}
         onToggleAutoSync={handleToggleAutoSync}
         onShowToast={showToast}
+        language={language}
       />
 
       {/* 4. Floating Notification Toasts */}
       <NotificationToast toasts={toasts} onDismiss={dismissToast} />
 
-      {/* University Footer */}
+      {/* Footer */}
       <footer className="bg-[#07090d] border-t border-[#1e293b] text-slate-500 text-xs py-6 mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p>
-            &copy; 2026 University Administrative Portal &bull; Department of Academic Affairs & Admissions.
+            &copy; 2026 {language === 'ar' ? 'بوابة إدارة بيانات وسجلات شؤون الطلاب - جمهورية العراق' : 'University Administrative Portal • Student Affairs & Admissions.'}
           </p>
-          <div className="flex items-center space-x-4">
-            <span className="hover:text-slate-300 transition-colors cursor-pointer">Privacy Policy</span>
+          <div className="flex items-center space-x-4 rtl:space-x-reverse">
+            <span className="hover:text-slate-300 transition-colors">{language === 'ar' ? 'سياسة الخصوصية' : 'Privacy Policy'}</span>
             <span>&bull;</span>
-            <span className="hover:text-slate-300 transition-colors cursor-pointer">FERPA Statement</span>
+            <span className="hover:text-slate-300 transition-colors">{language === 'ar' ? 'النجف الأشرف' : 'Al-Najaf Al-Ashraf'}</span>
             <span>&bull;</span>
-            <span className="hover:text-slate-300 transition-colors cursor-pointer">Google Sheets Integration</span>
+            <span className="hover:text-slate-300 transition-colors">{language === 'ar' ? 'تكامل Google Sheets' : 'Google Sheets'}</span>
           </div>
         </div>
       </footer>
     </div>
   );
 }
-

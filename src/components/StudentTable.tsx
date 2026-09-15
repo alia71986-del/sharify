@@ -13,16 +13,19 @@ import {
   Users,
   Copy,
   Check,
-  Building,
+  Receipt,
   RefreshCw,
+  MapPin,
+  Users2,
 } from 'lucide-react';
-import { Student, SortField, SortOrder } from '../types';
+import { Student, SortField, SortOrder, IRAQ_PROVINCES, Language } from '../types';
 import {
   formatDisplayDate,
   calculateAge,
   detectCarrier,
   getTodayDateString,
 } from '../utils/validation';
+import { translations } from '../utils/translations';
 
 interface StudentTableProps {
   students: Student[];
@@ -31,6 +34,7 @@ interface StudentTableProps {
   onViewDetails: (student: Student) => void;
   onRefresh: () => void;
   isLoading: boolean;
+  language: Language;
 }
 
 export const StudentTable: React.FC<StudentTableProps> = ({
@@ -40,9 +44,13 @@ export const StudentTable: React.FC<StudentTableProps> = ({
   onViewDetails,
   onRefresh,
   isLoading,
+  language,
 }) => {
+  const t = translations[language];
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'this_week' | 'this_month' | 'custom'>('all');
+  const [provinceFilter, setProvinceFilter] = useState<string>('all');
+  const [genderFilter, setGenderFilter] = useState<string>('all');
   const [customDate, setCustomDate] = useState('');
   const [sortField, setSortField] = useState<SortField>('createdAt');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
@@ -71,21 +79,38 @@ export const StudentTable: React.FC<StudentTableProps> = ({
   const filteredStudents = useMemo(() => {
     let result = [...students];
 
-    // 1. Search Query (Student Name or Phone Number)
+    // 1. Search Query (Student Name, Phone, Parents Phone, Province, Receipt No)
     if (searchQuery.trim().length > 0) {
       const q = searchQuery.trim().toLowerCase();
       result = result.filter((student) => {
         const nameMatch = student.studentName.toLowerCase().includes(q);
         const phoneMatch = student.phoneNumber.replace(/[\s\-\(\)]/g, '').includes(q);
-        const additionalPhoneMatch =
-          student.additionalPhoneNumber &&
-          student.additionalPhoneNumber.replace(/[\s\-\(\)]/g, '').includes(q);
-        const deptMatch = student.department && student.department.toLowerCase().includes(q);
-        return nameMatch || phoneMatch || additionalPhoneMatch || deptMatch;
+        const parentPhone = student.parentPhoneNumber || student.additionalPhoneNumber;
+        const parentPhoneMatch =
+          parentPhone && parentPhone.replace(/[\s\-\(\)]/g, '').includes(q);
+        const provMatch = student.province && student.province.toLowerCase().includes(q);
+        const residenceMatch =
+          student.residenceDetails && student.residenceDetails.toLowerCase().includes(q);
+        const receiptMatch =
+          (student.receiptNo && student.receiptNo.toLowerCase().includes(q)) ||
+          (student.notes && student.notes.toLowerCase().includes(q));
+        return nameMatch || phoneMatch || parentPhoneMatch || provMatch || residenceMatch || receiptMatch;
       });
     }
 
-    // 2. Collection Date Filter
+    // 2. Province Filter
+    if (provinceFilter !== 'all') {
+      result = result.filter(
+        (s) => s.province && s.province.toLowerCase() === provinceFilter.toLowerCase()
+      );
+    }
+
+    // 3. Gender Filter
+    if (genderFilter !== 'all') {
+      result = result.filter((s) => s.gender === genderFilter);
+    }
+
+    // 4. Collection Date Filter
     if (dateFilter === 'today') {
       result = result.filter((s) => s.collectionDate === todayStr);
     } else if (dateFilter === 'this_week') {
@@ -100,10 +125,10 @@ export const StudentTable: React.FC<StudentTableProps> = ({
       result = result.filter((s) => s.collectionDate === customDate);
     }
 
-    // 3. Sorting
+    // 5. Sorting
     result.sort((a, b) => {
-      let valA: string = a[sortField] || '';
-      let valB: string = b[sortField] || '';
+      let valA: string = (a[sortField] as string) || '';
+      let valB: string = (b[sortField] as string) || '';
 
       valA = valA.toLowerCase();
       valB = valB.toLowerCase();
@@ -114,7 +139,17 @@ export const StudentTable: React.FC<StudentTableProps> = ({
     });
 
     return result;
-  }, [students, searchQuery, dateFilter, customDate, sortField, sortOrder, todayStr]);
+  }, [
+    students,
+    searchQuery,
+    provinceFilter,
+    genderFilter,
+    dateFilter,
+    customDate,
+    sortField,
+    sortOrder,
+    todayStr,
+  ]);
 
   // Export to CSV
   const handleExportCSV = () => {
@@ -122,398 +157,441 @@ export const StudentTable: React.FC<StudentTableProps> = ({
 
     const headers = [
       'ID',
-      'Student Name',
+      'Student Full Name',
+      'Gender',
       'Birth Date',
-      'Age',
       'Primary Phone Number',
-      'Additional Phone Number',
+      'Parents Phone Number',
+      'Province (Iraq)',
+      'Residence Details',
       'Collection Date',
-      'Department',
-      'Notes',
-      'Created At',
+      'Receipt No.',
+      'Record Created At',
     ];
 
     const rows = filteredStudents.map((s) => [
-      s.id,
+      `"${s.id}"`,
       `"${s.studentName.replace(/"/g, '""')}"`,
-      s.birthDate,
-      calculateAge(s.birthDate) || '',
+      `"${s.gender || 'male'}"`,
+      `"${s.birthDate}"`,
       `"${s.phoneNumber}"`,
-      `"${s.additionalPhoneNumber || ''}"`,
-      s.collectionDate,
-      `"${s.department || ''}"`,
-      `"${(s.notes || '').replace(/"/g, '""')}"`,
-      s.createdAt,
+      `"${(s.parentPhoneNumber || s.additionalPhoneNumber || '').replace(/"/g, '""')}"`,
+      `"${(s.province || 'Al-Najaf').replace(/"/g, '""')}"`,
+      `"${(s.residenceDetails || '').replace(/"/g, '""')}"`,
+      `"${s.collectionDate}"`,
+      `"${(s.receiptNo || s.notes || '').replace(/"/g, '""')}"`,
+      `"${s.createdAt}"`,
     ]);
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Student_Registry_${getTodayDateString()}.csv`);
+    link.setAttribute('download', `student_registry_${getTodayDateString()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
+  const renderSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="w-3 h-3 text-slate-500 opacity-60" />;
+    }
+    return sortOrder === 'asc' ? (
+      <ArrowUp className="w-3 h-3 text-amber-400" />
+    ) : (
+      <ArrowDown className="w-3 h-3 text-amber-400" />
+    );
+  };
+
   return (
-    <div className="bg-[#0f172a] rounded-2xl border border-[#1e293b] shadow-xl overflow-hidden">
-      {/* Table Header Section & Filter Toolbar */}
-      <div className="p-6 border-b border-[#1e293b] bg-[#0f172a]">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+    <section className="bg-[#0f172a] rounded-2xl border border-[#1e293b] shadow-xl overflow-hidden">
+      {/* Table Header Controls */}
+      <div className="p-5 border-b border-[#1e293b] space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2.5">
-              <h3 className="text-base sm:text-lg font-bold text-white tracking-tight uppercase">
-                Student Directory <span className="text-amber-500">//</span> Database View
-              </h3>
-              <span className="px-2.5 py-0.5 rounded text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono">
-                {filteredStudents.length} {filteredStudents.length === 1 ? 'Record' : 'Records'}
-              </span>
-            </div>
-            <p className="text-xs text-slate-400 mt-1">
-              Search, filter by collection date, view student profiles, and update administrative records.
-            </p>
+            <h3 className="text-base font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              <Users className="w-4 h-4 text-amber-400" />
+              {t.directoryTitle}
+            </h3>
+            <p className="text-xs text-slate-400">{t.directorySubtitle}</p>
           </div>
 
-          {/* Quick Actions (Export & Refresh) */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              id="refresh-records-btn"
+              id="refresh-database-btn"
               onClick={onRefresh}
-              className="p-2.5 rounded-xl border border-[#334155] bg-[#1e293b] hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
-              title="Refresh records from database"
+              disabled={isLoading}
+              className="p-2 rounded-xl border border-[#334155] bg-transparent hover:bg-slate-800 text-slate-300 transition-colors cursor-pointer"
+              title={t.refreshBtn}
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-amber-400' : ''}`} />
             </button>
+
             <button
               type="button"
               id="export-csv-btn"
               onClick={handleExportCSV}
               disabled={filteredStudents.length === 0}
-              className="px-3.5 py-2.5 rounded-xl border border-[#334155] bg-[#1e293b] hover:bg-slate-700 text-slate-300 hover:text-white font-semibold text-xs flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3.5 py-2 rounded-xl bg-[#0a0c10] hover:bg-slate-800 border border-[#334155] text-slate-200 font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-40"
             >
-              <Download className="w-4 h-4 text-amber-400" />
-              <span>Export CSV</span>
+              <Download className="w-3.5 h-3.5 text-amber-400" />
+              <span>{t.exportCsvBtn}</span>
             </button>
           </div>
         </div>
 
-        {/* Search & Filter Controls */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 mt-4 pt-4 border-t border-[#1e293b]">
-          {/* Search Box */}
-          <div className="lg:col-span-6 relative">
-            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
-              <Search className="w-4 h-4" />
-            </div>
+        {/* Search Bar & Filter Options */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+          {/* Search Input */}
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 rtl:left-auto rtl:right-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              id="search-students-input"
+              id="table-search-input"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by student name, phone, or department..."
-              className="block w-full pl-10 pr-4 py-2.5 text-sm text-[#e2e8f0] bg-[#0a0c10] rounded-xl border border-[#334155] focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 placeholder:text-slate-600 transition-colors outline-none"
+              placeholder={t.searchPlaceholder}
+              className="w-full pl-10 pr-4 rtl:pl-4 rtl:pr-10 py-2 rounded-xl bg-[#0a0c10] border border-[#1e293b] focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 text-white placeholder-slate-500 text-xs transition-colors outline-none"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center text-xs text-slate-400 hover:text-white font-medium cursor-pointer"
+                className="absolute right-3 rtl:right-auto rtl:left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-white"
               >
-                Clear
+                {t.clearSearch}
               </button>
             )}
           </div>
 
-          {/* Collection Date Filter Selector */}
-          <div className="lg:col-span-3">
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
-                <Filter className="w-3.5 h-3.5" />
-              </div>
-              <select
-                id="collection-date-filter"
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value as any)}
-                className="block w-full pl-9 pr-8 py-2.5 text-sm text-[#e2e8f0] bg-[#0a0c10] rounded-xl border border-[#334155] focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 transition-colors font-medium outline-none"
-              >
-                <option value="all" className="bg-[#0f172a]">Filter: All Dates</option>
-                <option value="today" className="bg-[#0f172a]">Collected Today ({todayStr})</option>
-                <option value="this_week" className="bg-[#0f172a]">Collected Past 7 Days</option>
-                <option value="this_month" className="bg-[#0f172a]">Collected This Month</option>
-                <option value="custom" className="bg-[#0f172a]">Specific Date...</option>
-              </select>
-            </div>
+          {/* Iraqi Province Filter */}
+          <div className="relative">
+            <select
+              id="province-filter-select"
+              value={provinceFilter}
+              onChange={(e) => setProvinceFilter(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl bg-[#0a0c10] border border-[#1e293b] focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 text-white text-xs transition-colors outline-none cursor-pointer"
+            >
+              <option value="all">{t.filterProvinceAll}</option>
+              {IRAQ_PROVINCES.map((prov) => (
+                <option key={prov.id} value={prov.nameEn}>
+                  {language === 'ar' ? `${prov.nameAr}` : `${prov.nameEn} (${prov.nameAr})`}
+                </option>
+              ))}
+            </select>
           </div>
 
-          {/* Custom Date Input if 'custom' selected */}
-          {dateFilter === 'custom' ? (
-            <div className="lg:col-span-3">
-              <input
-                type="date"
-                value={customDate}
-                onChange={(e) => setCustomDate(e.target.value)}
-                className="block w-full px-3 py-2.5 text-sm text-[#e2e8f0] bg-[#0a0c10] rounded-xl border border-amber-500/80 focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 outline-none font-mono"
-              />
-            </div>
-          ) : (
-            /* Sort Dropdown */
-            <div className="lg:col-span-3">
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
-                  <ArrowUpDown className="w-3.5 h-3.5" />
-                </div>
-                <select
-                  id="sort-students-select"
-                  value={`${sortField}-${sortOrder}`}
-                  onChange={(e) => {
-                    const [field, order] = e.target.value.split('-');
-                    setSortField(field as SortField);
-                    setSortOrder(order as SortOrder);
-                  }}
-                  className="block w-full pl-9 pr-8 py-2.5 text-sm text-[#e2e8f0] bg-[#0a0c10] rounded-xl border border-[#334155] focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 transition-colors font-medium outline-none"
-                >
-                  <option value="createdAt-desc" className="bg-[#0f172a]">Sort: Newest Added</option>
-                  <option value="studentName-asc" className="bg-[#0f172a]">Sort: Name (A-Z)</option>
-                  <option value="studentName-desc" className="bg-[#0f172a]">Sort: Name (Z-A)</option>
-                  <option value="birthDate-asc" className="bg-[#0f172a]">Sort: DOB (Oldest)</option>
-                  <option value="birthDate-desc" className="bg-[#0f172a]">Sort: DOB (Youngest)</option>
-                  <option value="collectionDate-desc" className="bg-[#0f172a]">Sort: Date (Newest)</option>
-                  <option value="collectionDate-asc" className="bg-[#0f172a]">Sort: Date (Oldest)</option>
-                </select>
-              </div>
-            </div>
-          )}
+          {/* Gender Filter */}
+          <div className="relative">
+            <select
+              id="gender-filter-select"
+              value={genderFilter}
+              onChange={(e) => setGenderFilter(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl bg-[#0a0c10] border border-[#1e293b] focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 text-white text-xs transition-colors outline-none cursor-pointer"
+            >
+              <option value="all">{t.filterGenderAll}</option>
+              <option value="male">{t.genderMale}</option>
+              <option value="female">{t.genderFemale}</option>
+            </select>
+          </div>
+
+          {/* Collection Date Filter */}
+          <div className="relative">
+            <select
+              id="date-filter-select"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value as any)}
+              className="w-full px-3 py-2 rounded-xl bg-[#0a0c10] border border-[#1e293b] focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 text-white text-xs transition-colors outline-none cursor-pointer"
+            >
+              <option value="all">{t.filterDateAll}</option>
+              <option value="today">{t.filterDateToday}</option>
+              <option value="this_week">{t.filterDateWeek}</option>
+              <option value="this_month">{t.filterDateMonth}</option>
+              <option value="custom">{t.filterDateCustom}</option>
+            </select>
+          </div>
         </div>
+
+        {/* Custom date picker if custom is selected */}
+        {dateFilter === 'custom' && (
+          <div className="flex items-center gap-2 pt-2 animate-in fade-in">
+            <span className="text-xs text-slate-400 font-medium">{language === 'ar' ? 'حدد التاريخ:' : 'Select exact date:'}</span>
+            <input
+              type="date"
+              value={customDate}
+              onChange={(e) => setCustomDate(e.target.value)}
+              className="px-3 py-1.5 rounded-lg bg-[#0a0c10] border border-[#1e293b] text-white text-xs outline-none font-mono"
+            />
+          </div>
+        )}
       </div>
 
-      {/* Table Container */}
+      {/* Directory Table Grid */}
       <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
+        <table className="w-full text-left rtl:text-right border-collapse">
           <thead>
-            <tr className="border-b border-[#1e293b] bg-[#090e1a] text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-              {/* Student Name */}
+            <tr className="bg-[#0a0c10] text-[11px] font-bold text-slate-400 uppercase tracking-wider border-b border-[#1e293b]">
               <th
-                scope="col"
                 onClick={() => handleSort('studentName')}
-                className="py-3.5 px-4 sm:px-6 cursor-pointer hover:text-white transition-colors select-none"
+                className="py-3 px-4 cursor-pointer hover:text-white transition-colors"
               >
                 <div className="flex items-center gap-1.5">
-                  <span>Student Name</span>
-                  {sortField === 'studentName' ? (
-                    sortOrder === 'asc' ? (
-                      <ArrowUp className="w-3.5 h-3.5 text-amber-400" />
-                    ) : (
-                      <ArrowDown className="w-3.5 h-3.5 text-amber-400" />
-                    )
-                  ) : (
-                    <ArrowUpDown className="w-3 h-3 text-slate-600" />
-                  )}
+                  <span>{t.colStudentName}</span>
+                  {renderSortIcon('studentName')}
                 </div>
               </th>
-
-              {/* Birth Date */}
               <th
-                scope="col"
+                onClick={() => handleSort('province')}
+                className="py-3 px-4 cursor-pointer hover:text-white transition-colors"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span>{t.colPlaceOfLiving}</span>
+                  {renderSortIcon('province')}
+                </div>
+              </th>
+              <th
                 onClick={() => handleSort('birthDate')}
-                className="py-3.5 px-4 cursor-pointer hover:text-white transition-colors select-none"
+                className="py-3 px-4 cursor-pointer hover:text-white transition-colors"
               >
                 <div className="flex items-center gap-1.5">
-                  <span>DOB</span>
-                  {sortField === 'birthDate' ? (
-                    sortOrder === 'asc' ? (
-                      <ArrowUp className="w-3.5 h-3.5 text-amber-400" />
-                    ) : (
-                      <ArrowDown className="w-3.5 h-3.5 text-amber-400" />
-                    )
-                  ) : (
-                    <ArrowUpDown className="w-3 h-3 text-slate-600" />
-                  )}
+                  <span>{t.colDOB}</span>
+                  {renderSortIcon('birthDate')}
                 </div>
               </th>
-
-              {/* Primary Phone */}
-              <th scope="col" className="py-3.5 px-4">
-                Primary Phone
-              </th>
-
-              {/* Additional Phone */}
-              <th scope="col" className="py-3.5 px-4">
-                Additional Phone
-              </th>
-
-              {/* Collection Date */}
+              <th className="py-3 px-4">{t.colStudentPhone}</th>
+              <th className="py-3 px-4">{t.colParentsPhone}</th>
               <th
-                scope="col"
-                onClick={() => handleSort('collectionDate')}
-                className="py-3.5 px-4 cursor-pointer hover:text-white transition-colors select-none"
+                onClick={() => handleSort('receiptNo')}
+                className="py-3 px-4 cursor-pointer hover:text-white transition-colors"
               >
                 <div className="flex items-center gap-1.5">
-                  <span>Collected</span>
-                  {sortField === 'collectionDate' ? (
-                    sortOrder === 'asc' ? (
-                      <ArrowUp className="w-3.5 h-3.5 text-amber-400" />
-                    ) : (
-                      <ArrowDown className="w-3.5 h-3.5 text-amber-400" />
-                    )
-                  ) : (
-                    <ArrowUpDown className="w-3 h-3 text-slate-600" />
-                  )}
+                  <span>{t.colReceiptNo}</span>
+                  {renderSortIcon('receiptNo')}
                 </div>
               </th>
-
-              {/* Actions */}
-              <th scope="col" className="py-3.5 px-4 sm:px-6 text-right">
-                Actions
+              <th
+                onClick={() => handleSort('collectionDate')}
+                className="py-3 px-4 cursor-pointer hover:text-white transition-colors"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span>{t.colCollected}</span>
+                  {renderSortIcon('collectionDate')}
+                </div>
               </th>
+              <th className="py-3 px-4 text-center">{t.colActions}</th>
             </tr>
           </thead>
-
-          <tbody className="divide-y divide-[#1e293b] text-sm">
-            {filteredStudents.length > 0 ? (
+          <tbody className="divide-y divide-[#1e293b] text-xs">
+            {filteredStudents.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="py-12 text-center text-slate-500">
+                  <div className="max-w-sm mx-auto space-y-2">
+                    <p className="text-sm font-semibold text-slate-400">
+                      {t.noRecordsFound}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {t.noRecordsFoundDesc}
+                    </p>
+                    {(searchQuery || provinceFilter !== 'all' || genderFilter !== 'all' || dateFilter !== 'all') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchQuery('');
+                          setProvinceFilter('all');
+                          setGenderFilter('all');
+                          setDateFilter('all');
+                          setCustomDate('');
+                        }}
+                        className="mt-2 inline-flex items-center px-3 py-1.5 rounded-lg bg-[#1e293b] hover:bg-slate-700 text-amber-400 text-xs font-semibold cursor-pointer transition-colors"
+                      >
+                        {t.clearSearchAndFilters}
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ) : (
               filteredStudents.map((student) => {
-                const primaryCarrier = detectCarrier(student.phoneNumber);
-                const secondaryCarrier = detectCarrier(student.additionalPhoneNumber);
                 const age = calculateAge(student.birthDate);
-                const isCollectedToday = student.collectionDate === todayStr;
+                const isToday = student.collectionDate === todayStr;
+                const primaryCarrier = detectCarrier(student.phoneNumber, language);
+                const parentPhone = student.parentPhoneNumber || student.additionalPhoneNumber;
+                const parentCarrier = detectCarrier(parentPhone, language);
+                const receiptText = student.receiptNo || student.notes;
 
                 return (
                   <tr
                     key={student.id}
-                    id={`student-row-${student.id}`}
-                    className={`hover:bg-slate-800/40 transition-colors ${
-                      isCollectedToday ? 'bg-amber-500/5' : ''
-                    }`}
+                    className="hover:bg-slate-800/40 transition-colors group"
                   >
-                    {/* Student Name */}
-                    <td className="py-4 px-4 sm:px-6">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-amber-600/20 text-amber-400 font-bold text-sm flex items-center justify-center ring-1 ring-amber-500/30 flex-shrink-0">
-                          {student.studentName.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="font-semibold text-white leading-tight">
-                            {student.studentName}
+                    {/* 1. Student Full Name + Gender Badge */}
+                    <td className="py-3.5 px-4 font-medium text-white">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-100 hover:text-amber-400 transition-colors cursor-pointer" onClick={() => onViewDetails(student)}>
+                          {student.studentName}
+                        </span>
+                        {student.gender && (
+                          <span
+                            className={`px-1.5 py-0.2 rounded text-[10px] font-bold border ${
+                              student.gender === 'male'
+                                ? 'bg-sky-500/20 text-sky-300 border-sky-500/30'
+                                : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                            }`}
+                          >
+                            {student.gender === 'male' ? '♂' : '♀'}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
+                        ID: {student.id}
+                      </span>
+                    </td>
+
+                    {/* 2. Place of Living (Province + Details) */}
+                    <td className="py-3.5 px-4">
+                      <div className="space-y-0.5">
+                        <span className="inline-flex items-center gap-1 font-semibold text-amber-300">
+                          <MapPin className="w-3 h-3 text-amber-400 flex-shrink-0" />
+                          {student.province || 'Al-Najaf'}
+                        </span>
+                        {student.residenceDetails && (
+                          <p className="text-[11px] text-slate-400 truncate max-w-[170px]" title={student.residenceDetails}>
+                            {student.residenceDetails}
                           </p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            {student.department && (
-                              <span className="text-xs text-slate-400 flex items-center gap-1">
-                                <Building className="w-3 h-3 text-slate-500" />
-                                {student.department}
-                              </span>
-                            )}
-                          </div>
-                        </div>
+                        )}
                       </div>
                     </td>
 
-                    {/* Birth Date */}
-                    <td className="py-4 px-4 whitespace-nowrap font-mono">
-                      <p className="text-slate-300 font-medium">
-                        {formatDisplayDate(student.birthDate)}
-                      </p>
+                    {/* 3. Birth Date + Age */}
+                    <td className="py-3.5 px-4 whitespace-nowrap">
+                      <p className="font-mono text-slate-200">{formatDisplayDate(student.birthDate, language)}</p>
                       {age !== null && (
-                        <span className="text-xs text-slate-500">
-                          {age} yrs
+                        <span className="text-[11px] text-slate-400">
+                          {age} {t.ageYearsOld}
                         </span>
                       )}
                     </td>
 
-                    {/* Primary Phone */}
-                    <td className="py-4 px-4 whitespace-nowrap">
+                    {/* 4. Primary Phone Number */}
+                    <td className="py-3.5 px-4 whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-mono font-medium text-slate-200">
+                        <a
+                          href={`tel:${student.phoneNumber}`}
+                          dir="ltr"
+                          className="font-mono text-amber-400 font-bold hover:underline"
+                        >
                           {student.phoneNumber}
-                        </span>
+                        </a>
                         <button
                           type="button"
-                          onClick={() => handleCopyPhone(student.phoneNumber, student.id)}
-                          className="p-1 text-slate-500 hover:text-amber-400 rounded transition-colors cursor-pointer"
-                          title="Copy phone number"
+                          onClick={() => handleCopyPhone(student.phoneNumber, `${student.id}-primary`)}
+                          className="text-slate-500 hover:text-slate-200 transition-colors cursor-pointer p-0.5"
+                          title="Copy phone"
                         >
-                          {copiedId === student.id ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          {copiedId === `${student.id}-primary` ? (
+                            <Check className="w-3 h-3 text-emerald-400" />
                           ) : (
-                            <Copy className="w-3.5 h-3.5" />
+                            <Copy className="w-3 h-3" />
                           )}
                         </button>
                       </div>
                       {primaryCarrier && (
-                        <span
-                          className={`inline-block text-[10px] font-semibold px-1.5 py-0.2 rounded border mt-0.5 ${primaryCarrier.badgeColor}`}
-                        >
+                        <span className={`text-[9px] font-semibold px-1.5 py-0.2 rounded border inline-block mt-0.5 ${primaryCarrier.badgeColor}`}>
                           {primaryCarrier.name}
                         </span>
                       )}
                     </td>
 
-                    {/* Additional Phone */}
-                    <td className="py-4 px-4 whitespace-nowrap">
-                      {student.additionalPhoneNumber ? (
-                        <>
-                          <p className="font-mono text-slate-300">
-                            {student.additionalPhoneNumber}
-                          </p>
-                          {secondaryCarrier && (
-                            <span
-                              className={`inline-block text-[10px] font-semibold px-1.5 py-0.2 rounded border mt-0.5 ${secondaryCarrier.badgeColor}`}
+                    {/* 5. Parents Phone Number */}
+                    <td className="py-3.5 px-4 whitespace-nowrap">
+                      {parentPhone ? (
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <a
+                              href={`tel:${parentPhone}`}
+                              dir="ltr"
+                              className="font-mono text-slate-200 font-semibold hover:underline"
                             >
-                              {secondaryCarrier.name}
+                              {parentPhone}
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyPhone(parentPhone, `${student.id}-parent`)}
+                              className="text-slate-500 hover:text-slate-200 transition-colors cursor-pointer p-0.5"
+                              title="Copy parents phone"
+                            >
+                              {copiedId === `${student.id}-parent` ? (
+                                <Check className="w-3 h-3 text-emerald-400" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                            </button>
+                          </div>
+                          {parentCarrier && (
+                            <span className={`text-[9px] font-semibold px-1.5 py-0.2 rounded border inline-block mt-0.5 ${parentCarrier.badgeColor}`}>
+                              {parentCarrier.name}
                             </span>
                           )}
-                        </>
+                        </div>
                       ) : (
-                        <span className="text-xs text-slate-600 italic">None</span>
+                        <span className="text-slate-600 italic">—</span>
                       )}
                     </td>
 
-                    {/* Collection Date */}
-                    <td className="py-4 px-4 whitespace-nowrap font-mono">
+                    {/* 6. Receipt No. (Replaced Notes) */}
+                    <td className="py-3.5 px-4">
+                      {receiptText ? (
+                        <div className="flex items-center gap-1">
+                          <Receipt className="w-3 h-3 text-amber-400 flex-shrink-0" />
+                          <span className="font-mono text-amber-300 font-bold text-[11px] bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                            {receiptText}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-600 italic">—</span>
+                      )}
+                    </td>
+
+                    {/* 7. Collection Date */}
+                    <td className="py-3.5 px-4 whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
-                        <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                        <span className="text-slate-300">
-                          {formatDisplayDate(student.collectionDate)}
+                        <span className="font-mono text-slate-300 font-medium">
+                          {formatDisplayDate(student.collectionDate, language)}
                         </span>
+                        {isToday && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            {t.todayBadge}
+                          </span>
+                        )}
                       </div>
-                      {isCollectedToday && (
-                        <span className="inline-block mt-0.5 text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                          Today
-                        </span>
-                      )}
                     </td>
 
-                    {/* Actions: View Details, Edit, Delete */}
-                    <td className="py-4 px-4 sm:px-6 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {/* View Details */}
+                    {/* 8. Action Buttons */}
+                    <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                      <div className="flex items-center justify-center gap-1">
                         <button
                           type="button"
-                          id={`view-details-${student.id}`}
                           onClick={() => onViewDetails(student)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-                          title="View complete student details"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700 transition-colors cursor-pointer"
+                          title="View Profile Details"
                         >
                           <Eye className="w-4 h-4" />
                         </button>
-
-                        {/* Edit */}
                         <button
                           type="button"
-                          id={`edit-student-${student.id}`}
                           onClick={() => onEdit(student)}
-                          className="p-1.5 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 transition-colors cursor-pointer text-xs font-semibold"
-                          title="Edit student record"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-slate-700 transition-colors cursor-pointer"
+                          title="Edit Student Record"
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
-
-                        {/* Delete */}
                         <button
                           type="button"
-                          id={`delete-student-${student.id}`}
                           onClick={() => onDeleteRequest(student)}
-                          className="p-1.5 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-colors cursor-pointer text-xs font-semibold"
-                          title="Delete student record"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-700 transition-colors cursor-pointer"
+                          title="Delete Record"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -522,50 +600,22 @@ export const StudentTable: React.FC<StudentTableProps> = ({
                   </tr>
                 );
               })
-            ) : (
-              <tr>
-                <td colSpan={6} className="py-12 px-4 text-center">
-                  <div className="max-w-md mx-auto flex flex-col items-center">
-                    <div className="w-12 h-12 rounded-full bg-[#1e293b] text-slate-500 flex items-center justify-center mb-3">
-                      <Users className="w-6 h-6" />
-                    </div>
-                    <p className="text-base font-bold text-white">No Student Records Found</p>
-                    <p className="text-xs text-slate-400 mt-1">
-                      {searchQuery || dateFilter !== 'all'
-                        ? 'No records match your search or date filter criteria. Try clearing filters.'
-                        : 'No student information has been collected yet. Use the form above to add a student.'}
-                    </p>
-                    {(searchQuery || dateFilter !== 'all') && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSearchQuery('');
-                          setDateFilter('all');
-                          setCustomDate('');
-                        }}
-                        className="mt-4 px-4 py-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold text-xs hover:bg-amber-500/20 transition-colors cursor-pointer"
-                      >
-                        Clear Search & Filters
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
             )}
           </tbody>
         </table>
       </div>
 
-      {/* Table Footer / Summary Count */}
-      <div className="px-6 py-3.5 bg-[#090e1a] border-t border-[#1e293b] flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 gap-2">
+      {/* Table Footer Stats Summary */}
+      <div className="p-4 bg-[#0a0c10] border-t border-[#1e293b] flex flex-col sm:flex-row sm:items-center justify-between text-xs text-slate-400 gap-2">
         <p>
-          Showing <strong className="text-white font-mono">{filteredStudents.length}</strong> of{' '}
-          <strong className="text-white font-mono">{students.length}</strong> total registered students
+          {t.showingRecords}{' '}
+          <strong className="text-white font-mono">{filteredStudents.length}</strong> {t.ofTotal}{' '}
+          <strong className="text-white font-mono">{students.length}</strong> {t.totalStudentsLabel}
         </p>
-        <p className="text-slate-500">
-          Faculty Registrar Database &bull; Records auto-persisted
-        </p>
+        <div className="flex items-center gap-4 text-[11px] text-slate-500">
+          <span>{t.recordsAutoPersisted}</span>
+        </div>
       </div>
-    </div>
+    </section>
   );
 };
